@@ -16,7 +16,7 @@ for ID in `seq 0 15`; do
 	P_SIM=`echo ${P_MIN} ${P_MAX} $ID | awk '{printf("%.3f\n", $1+($2-$1)/16*$3)}'`
 
 	mkdir -p a_$ALPHA/p_$P_SIM
-	python hoomd_arcus-b.py $ALPHA $P_SIM $@ > a_$ALPHA/p_$P_SIM/output.log&
+	python hoomd_sc.py $ALPHA $P_SIM $@ > a_$ALPHA/p_$P_SIM/output.log&
 done
 
 wait

@@ -109,7 +109,7 @@ class HoomdSim():
 		rng_seed = os.urandom(4)
 		rng_seed = int(codecs.encode(rng_seed, 'hex'), 16)
 
-		# Setup integrator and particle model
+		# Setup integrator and spherocylinder particle model
 		vert     = [(0.,0.,-alpha/2.), (0.,0.,alpha/2.)]
 		
 		mc       = hpmc.integrate.convex_spheropolyhedron(seed=rng_seed, d=0.5, a=0.025)
