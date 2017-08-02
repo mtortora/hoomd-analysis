@@ -24,6 +24,7 @@ class Analyser():
 		self.n_part = self.traj[0].particles.N
 
 
+	# x,y,z box dimensions
 	def box_dims(self, snap): return snap.configuration.box[:3]
 
 
@@ -51,12 +52,12 @@ class Analyser():
 		evals,evecs = np.linalg.eigh(q)
 
 		# Sort eigenvalues/vectors in decreasing order
-		ordered     = evals.argsort()[::-1]
+		ordered     = evals.argsort()
 	
 		evals       = evals[ordered]
 		evecs       = evecs[:,ordered]
 	
-		return evals[0]
+		return evals[-1]
 
 
 	# Vectorised pairwise distance computations
@@ -83,15 +84,15 @@ class Analyser():
 		return dists
 
 
-	# Accumulates class property 'prop' over the last idx_eq configurations
-	def accumulate(self, prop, idx_eq, log=False):
+	# Accumulates class property 'prop' over the last n_eq configurations
+	def accumulate(self, prop, n_eq, log=False):
 		values = []
 	
-		if idx_eq > self.n_conf: print("Warning: chosen equilibration time longer than trajectory")
+		if n_eq > self.n_conf: print("Warning: chosen equilibration time longer than trajectory")
 
-		for idx,snap in enumerate(self.traj[-idx_eq:]):
+		for idx,snap in enumerate(self.traj[-n_eq:]):
 			if log:
-				if (idx+1) % 100 == 0: print("\033[1;34mProcessed %d out of %d configurations\033[0m" % (idx+1, idx_eq))
+				if (idx+1) % 100 == 0: print("\033[1;34mProcessed %d out of %d configurations\033[0m" % (idx+1, n_eq))
 
 			values.append(prop(snap))
 
@@ -99,13 +100,15 @@ class Analyser():
 
 
 	# PDF from binned pairwise distances
-	def g_hist(self, idx_eq, n_bins, r_min=0.2, r_max=5):
-		dims      = self.accumulate(self.box_dims, idx_eq)
-		dists     = self.accumulate(self.p_dists,  idx_eq, log=True)
+	def g_hist(self, n_eq, n_bins, r_min=0.2, r_max=5):
+		dims      = self.accumulate(self.box_dims, n_eq)
+		dists     = self.accumulate(self.p_dists,  n_eq, log=True)
 
-		# Discard distances greater than smallest box dimension
-		min_dim   = np.min(dims)
-		dists     = dists[dists<min_dim/2.]
+		# Discard distances greater than r_max/smallest box dimension
+		max_dist  = np.min(dims)/2.
+		r_max     = min(max_dist, r_max)
+		
+		dists     = dists[dists<r_max]
 
 		vols      = dims[:,0]*dims[:,1]*dims[:,2]
 		vol_ave   = np.mean(vols)
@@ -117,9 +120,8 @@ class Analyser():
 		vol_bins  = 4 * np.pi * bins[:-1]**2 * dr
 
 		hist      = np.asfarray(hist)
-		n_samples = len(dists)
-
-		hist     *= self.n_part / (2.*n_samples)
-		hist     /= vol_bins * self.n_part/vol_ave
+		
+		hist     /= self.n_part*(self.n_part-1)/2. * n_eq
+		hist     *= vol_ave/vol_bins
 
 		return bins, hist
