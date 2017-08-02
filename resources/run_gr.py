@@ -20,7 +20,7 @@ n_bins    = int(sys.argv[3])
 path_traj = os.path.dirname(file_traj)
 a         = ha.Analyser(file_traj)
 
-bins,hist = a.g_hist(n_eq, n_bins)
+bins,hist = a.g_hist(n_eq, n_bins=n_bins)
 
 gr        = np.zeros([n_bins, 2])
 

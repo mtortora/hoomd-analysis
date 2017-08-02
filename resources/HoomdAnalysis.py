@@ -100,7 +100,7 @@ class Analyser():
 
 
 	# PDF from binned pairwise distances
-	def g_hist(self, n_eq, n_bins, r_min=0.2, r_max=5):
+	def g_hist(self, n_eq, n_bins=100, r_min=0.2, r_max=5):
 		dims      = self.accumulate(self.box_dims, n_eq)
 		dists     = self.accumulate(self.p_dists,  n_eq, log=True)
 
