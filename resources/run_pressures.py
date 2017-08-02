@@ -8,12 +8,12 @@ import HoomdAnalysis as ha
 
 
 if len(sys.argv) != 3:
-	print("\033[1;31mUsage is %s particle_folder idx_eq\033[0m" % sys.argv[0])
+	print("\033[1;31mUsage is %s particle_folder n_eq\033[0m" % sys.argv[0])
 	sys.exit()
 
 
 dir_a  = str(sys.argv[1])
-idx_eq = int(sys.argv[2])
+n_eq   = int(sys.argv[2])
 
 if not os.path.isdir(dir_a):
 	print("\033[1;31mCouldn't find directory '%s'\033[0m" % dir_a)
@@ -39,8 +39,8 @@ for idx_p,dir_p in enumerate(dirs_p):
 	file_traj = "%s/%s/trajectory.gsd" % (dir_a, dir_p)
 	a         = ha.Analyser(file_traj)
 	
-	dims      = a.accumulate(a.box_dims, idx_eq)
-	ops       = a.accumulate(a.ord_param, idx_eq, log=True)
+	dims      = a.accumulate(a.box_dims, n_eq)
+	ops       = a.accumulate(a.ord_param, n_eq, log=True)
 	
 	vols      = dims[:,0]*dims[:,1]*dims[:,2]
 	etas      = a.n_part * v0/vols
@@ -53,8 +53,8 @@ for idx_p,dir_p in enumerate(dirs_p):
 	p_sim.append([eta_ave, p_adim, np.min(etas), np.max(etas)])
 	s_sim.append([eta_ave, op_ave, np.min(etas), np.max(etas), np.min(ops), np.max(ops)])
 
-file_p = "%s/p_%d.res" % (dir_a, idx_eq)
-file_s = "%s/s_%d.res" % (dir_a, idx_eq)
+file_p = "%s/p_%d.res" % (dir_a, n_eq)
+file_s = "%s/s_%d.res" % (dir_a, n_eq)
 
 
 np.savetxt(file_p, np.asarray(p_sim))
