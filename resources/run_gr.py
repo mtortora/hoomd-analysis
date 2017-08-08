@@ -27,7 +27,7 @@ gr        = np.zeros([n_bins, 2])
 gr[:,0]   = bins[:-1]
 gr[:,1]   = hist
 
-file_g    = "%s/gr_%d.res" % (path_traj, n_eq)
+file_g    = "%s/gr_%d_%d.res" % (path_traj, n_eq, n_bins)
 
 
 np.savetxt(file_g, gr)

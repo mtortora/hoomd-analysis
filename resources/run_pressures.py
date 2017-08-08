@@ -39,8 +39,8 @@ for idx_p,dir_p in enumerate(dirs_p):
 	file_traj = "%s/%s/trajectory.gsd" % (dir_a, dir_p)
 	a         = ha.Analyser(file_traj)
 	
-	dims      = a.accumulate(a.box_dims, n_eq)
-	ops       = a.accumulate(a.ord_param, n_eq, log=True)
+	dims      = a.accumulate(a.box_dims,  n_eq)
+	ops       = a.accumulate(a.nematic_q, n_eq)
 	
 	vols      = dims[:,0]*dims[:,1]*dims[:,2]
 	etas      = a.n_part * v0/vols
