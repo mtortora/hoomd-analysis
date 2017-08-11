@@ -44,24 +44,34 @@ class Analyser():
 		if abs(m) > l: raise ValueError("Must have |m| <= l")
 			
 		return sph_harm(m, l, phi, theta)
+	
+	
+	# Get 1d indices from harmonic index pairs (l,m)
+	def sph_idx(self, l, m):
+		if abs(m) > l: raise ValueError("Must have |m| <= l")
+	
+		return int(l*(l+1)/2 + m)
 
 
 	# Fetch all harmonics up to rank l_max
 	def get_sph_harms(self, l_max, theta, phi):
-		shs = np.zeros((l_max+1)**2, dtype=np.complex64)
+		n_sh = self.sph_idx(l_max, l_max)+1
+		sh   = np.zeros(n_sh, dtype=np.complex64)
 			
 		for l in range(l_max+1):
+			
+			# Discard odd ls
 			if l % 2 == 0:
 				for m in range(l+1):
-					lmp = l*(l+1) + m
-					lmn = l*(l+1) - m
+					lmp = self.sph_idx(l,  m)
+					lmn = self.sph_idx(l, -m)
 
 					slm = sph_harm(m, l, phi, theta)
 
-					shs[lmp] = slm
-					shs[lmn] = (-1)**m * slm.conj()
+					sh[lmp] = slm
+					sh[lmn] = (-1)**m * slm.conj()
 
-		return shs
+		return sh
 
 
 	# Project 3xn vector(s) vecs in the frame of 3x3 matrix rot
@@ -158,16 +168,12 @@ class Analyser():
 	def average(self, prop, n_eq, log=False, **kwargs):
 		if n_eq > self.n_conf: print("Warning: chosen equilibration time longer than trajectory")
 
-		iter_traj = iter(self.traj[-n_eq:])
-		init_snap = next(iter_traj)
+		for idx,snap in enumerate(self.traj[-n_eq:]):
+			if idx == 0: sum  = prop(snap, **kwargs)
+			else:        sum += prop(snap, **kwargs)
 		
-		sum       = prop(init_snap, **kwargs)
-		
-		for idx,snap in enumerate(iter_traj):
 			if log: print("\033[1;34mProcessed %d out of %d configurations\033[0m"
 						  % (idx+1, n_eq))
-	
-			sum += prop(snap, **kwargs)
 
 		return sum/n_eq
 
@@ -201,28 +207,26 @@ class Analyser():
 
 
 	# Single-particle spherical harmonic averages
-	def single_sph_aves(self, snap, l_max=8):
+	def single_sh_aves(self, snap, l_max=8):
 		quats         = snap.particles.orientation
-		sph_sums      = np.zeros(l_max+1, dtype=np.complex64)
+		sh_aves       = np.zeros(l_max+1, dtype=np.complex64)
 
 		# Project particle axes in nematic frame and fetch spherical angles
-		part_axes     = self.part_axis(quats)
+		axes          = self.part_axis(quats)
 		frame         = self.nematic_q(snap, mode="frame")
 
-		part_axes_prj = self.proj_vec(part_axes, frame)
-		thetas,phis   = self.sph_angs(part_axes_prj)
+		axes_prj      = self.proj_vec(axes, frame)
+		thetas,phis   = self.sph_angs(axes_prj)
 		
 		for theta,phi in zip(thetas,phis):
 			for l in range(l_max+1):
-				if l % 2 == 0: sph_sums[l] += self.get_sph_harm(l, 0, theta, phi)
+				if l % 2 == 0: sh_aves[l] += self.get_sph_harm(l, 0, theta, phi)
 
-		sph_aves = sph_sums / self.n_part
-
-		return sph_aves
+		return sh_aves / self.n_part
 
 
 	# Pair spherical harmonic averages
-	def pair_sph_aves(self, snap, bins=np.linspace(0, 12, num=300+1), l_max=8):
+	def pair_sh_aves(self, snap, bins=np.linspace(0, 12, num=300+1), l_max=8):
 		n_bins        = len(bins)-1
 		r_min,r_max   = np.min(bins),np.max(bins)
 		
@@ -231,19 +235,23 @@ class Analyser():
 		cm_pos        = snap.particles.position
 		quats         = snap.particles.orientation
 		
-		n_harm        = (l_max+1)**2
-		sph_sums      = np.zeros([n_bins,n_harm,n_harm,n_harm], dtype=np.complex64)
+		# r-dependent coefficient (l1,m1,l2,m2,m,l) can be accessed as sh_aves[:,self.sph_idx(l1,m1),self.sph_idx(l2,m2),self.sph_idx(l,m)]
+		n_sh          = self.sph_idx(l_max, l_max)+1
+		sh_aves       = np.zeros([n_bins,n_sh,n_sh,n_sh], dtype=np.complex64)
 		
 		p_ctr         = np.zeros(n_bins)
 		
 		# Project particle axes in nematic frame and fetch spherical angles
-		part_axes     = self.part_axis(quats)
+		axes          = self.part_axis(quats)
 		frame         = self.nematic_q(snap, mode="frame")
 		
-		part_axes_prj = self.proj_vec(part_axes, frame)
-		thetas,phis   = self.sph_angs(part_axes_prj)
+		axes_prj      = self.proj_vec(axes, frame)
+		thetas,phis   = self.sph_angs(axes_prj)
 
 		for idx_part1 in range(self.n_part):
+			theta1,phi1 = thetas[idx_part1],phis[idx_part1]
+			sh1         = self.get_sph_harms(l_max, theta1, phi1)
+
 			for idx_part2 in range(idx_part1+1, self.n_part):
 				vec = cm_pos[idx_part2,:] - cm_pos[idx_part1,:]
 
@@ -259,19 +267,15 @@ class Analyser():
 					p_ctr[idx_r] += 1
 					
 					vec_prj       = self.proj_vec(vec, frame)
+					
 					theta,phi     = self.sph_angs(vec_prj)
-				
-					theta1,phi1   = thetas[idx_part1],phis[idx_part1]
 					theta2,phi2   = thetas[idx_part2],phis[idx_part2]
 		
-					shs           = self.get_sph_harms(l_max, theta, phi)
-					shs1          = self.get_sph_harms(l_max, theta1, phi1)
-					shs2          = self.get_sph_harms(l_max, theta2, phi2)
-					
-					sph_sums[idx_r,...] += np.einsum("i,j,k", shs, shs1, shs2)
+					sh            = self.get_sph_harms(l_max, theta, phi)
+					sh2           = self.get_sph_harms(l_max, theta2, phi2)
+
+					sh_aves[idx_r,...] += np.einsum("i,j,k", sh1, sh2, sh)
 	
 		p_ctr[p_ctr==0] = 1
-	
-		sph_aves = sph_sums.conj() / p_ctr[:,None,None,None]
 		
-		return sph_aves
+		return sh_aves.conj() / p_ctr[:,None,None,None]

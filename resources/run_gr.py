@@ -22,7 +22,7 @@ a         = ha.Analyser(file_traj)
 
 bins,hist = a.g_hist(n_eq, n_bins=n_bins)
 
-gr        = np.zeros([n_bins, 2])
+gr        = np.zeros([n_bins,2])
 
 gr[:,0]   = bins[:-1]
 gr[:,1]   = hist
