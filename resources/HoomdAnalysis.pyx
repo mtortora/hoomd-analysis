@@ -59,7 +59,7 @@ class Analyser():
 		cdef int n_sh = self.sph_idx(l_max, l_max)+1
 		cdef np.ndarray[np.complex64_t, ndim=1] sh = np.zeros(n_sh, dtype=np.complex64)
 		
-		cdef long l,m,lmp,lmn
+		cdef long           l,m,lmp,lmn
 		cdef np.complex64_t slm
         
 		for l in range(l_max+1):
@@ -179,7 +179,7 @@ class Analyser():
 			if log: print("\033[1;34mProcessed %d out of %d configurations\033[0m"
 						  % (idx+1, n_eq))
 
-		return sum/n_eq
+		return sum / n_eq
 
 
 	# PDF from binned pairwise distances
@@ -212,15 +212,15 @@ class Analyser():
 
 	# Single-particle spherical harmonic averages
 	def single_sh_aves(self, snap, l_max=8):
-		quats         = snap.particles.orientation
-		sh_aves       = np.zeros(l_max+1, dtype=np.complex64)
+		quats       = snap.particles.orientation
+		sh_aves     = np.zeros(l_max+1, dtype=np.complex64)
 
 		# Project particle axes in nematic frame and fetch spherical angles
-		axes          = self.part_axis(quats)
-		frame         = self.nematic_q(snap, mode="frame")
+		axes        = self.part_axis(quats)
+		frame       = self.nematic_q(snap, mode="frame")
 
-		axes_prj      = self.proj_vec(axes, frame)
-		thetas,phis   = self.sph_angs(axes_prj)
+		axes_prj    = self.proj_vec(axes, frame)
+		thetas,phis = self.sph_angs(axes_prj)
 		
 		for theta,phi in zip(thetas,phis):
 			for l in range(l_max+1):
