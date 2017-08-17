@@ -205,7 +205,7 @@ for idx in range(n_tot):
 alpha_inv = np.linalg.inv(alpha)
 
 # Use alpha_inv,v to compute r-dependant h
-h = np.zeros_like(rho2, dtype=np.float32)
+h         = np.zeros_like(rho2, dtype=np.float32)
 
 for idx_r,rho2_r in enumerate(rho2): h[idx_r,:] = np.dot(alpha_inv, rho2_r-v)
 
