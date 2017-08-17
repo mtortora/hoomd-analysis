@@ -8,7 +8,8 @@ import gsd.hoomd
 
 import numpy as np
 
-from scipy.special import sph_harm
+cimport numpy as np
+cimport scipy.special.cython_special as cs
 
 
 # Trajectory analyser class
@@ -40,40 +41,43 @@ class Analyser():
 
 
 	# Fetch spherical harmonic of indices l,m
-	def get_sph_harm(self, l, m, theta, phi):
+	def get_sph_harm(self, long l, long m, double theta, double phi):
 		if abs(m) > l: raise ValueError("Must have |m| <= l")
 			
-		return sph_harm(m, l, phi, theta)
+		return cs.sph_harm(m, l, phi, theta)
 	
 	
 	# Get 1d indices from harmonic index pairs (l,m)
-	def sph_idx(self, l, m):
+	def sph_idx(self, long l, long m):
 		if abs(m) > l: raise ValueError("Must have |m| <= l")
 	
-		return int(l*(l+1)/2 + m)
+		return long(l*(l+1)/2 + m)
 
 
 	# Fetch all harmonics up to rank l_max
-	def get_sph_harms(self, l_max, theta, phi):
-		n_sh = self.sph_idx(l_max, l_max)+1
-		sh   = np.zeros(n_sh, dtype=np.complex64)
-			
+	def get_sph_harms(self, long l_max, double theta, double phi):
+		cdef int n_sh = self.sph_idx(l_max, l_max)+1
+		cdef np.ndarray[np.complex64_t, ndim=1] sh = np.zeros(n_sh, dtype=np.complex64)
+		
+		cdef long l,m,lmp,lmn
+		cdef np.complex64_t slm
+        
 		for l in range(l_max+1):
 			
 			# Discard odd ls
 			if l % 2 == 0:
 				for m in range(l+1):
-					lmp = self.sph_idx(l,  m)
-					lmn = self.sph_idx(l, -m)
+					lmp     = self.sph_idx(l,  m)
+					lmn     = self.sph_idx(l, -m)
 
-					slm = sph_harm(m, l, phi, theta)
+					slm     = cs.sph_harm(m, l, phi, theta)
 
 					sh[lmp] = slm
-					sh[lmn] = (-1)**m * slm.conj()
+					sh[lmn] = (-1)**m * np.conj(slm)
 
 		return sh
 
-
+            
 	# Project 3xn vector(s) vecs in the frame of 3x3 matrix rot
 	def proj_vec(self, vecs, rot): return np.dot(rot.T, vecs.T).T
 	
@@ -82,18 +86,18 @@ class Analyser():
 	def sph_angs(self, vecs):
 		vecs  /= np.linalg.norm(vecs, axis=-1, keepdims=True)
 	
-		thetas = np.asarray(np.arccos(vecs[...,2]))
-		phis   = np.asarray(np.arctan(vecs[...,1]/vecs[...,0]))
+		thetas = np.asarray(np.arccos(vecs[...,2]), dtype=np.float32)
+		phis   = np.asarray(np.arctan(vecs[...,1]/vecs[...,0]), dtype=np.float32)
 	
 		# Handle azimuthal phi degeneracy
 		phis[vecs[...,0] < 0] += np.pi
 	
-		return thetas,phis
+		return np.asarray([thetas,phis], dtype=np.float32)
 
 
 	# Nematic director from Q spectral analysis
 	def nematic_q(self, snap, mode="ord"):
-		qs          = np.zeros([self.n_part,3,3])
+		qs          = np.zeros([self.n_part,3,3], dtype=np.float32)
 		quats       = snap.particles.orientation
 
 		# Ensemble-averaged Q tensor
@@ -121,7 +125,7 @@ class Analyser():
 		if np.linalg.det(evecs) < 0: evecs[:,0] *= -1
 	
 		if mode == "ord":   return evals[-1]
-		if mode == "frame": return evecs
+		if mode == "frame": return np.asarray(evecs, dtype=np.float32)
 
 
 	# Vectorised pairwise distance computations
@@ -192,13 +196,13 @@ class Analyser():
 		vols      = dims[:,0]*dims[:,1]*dims[:,2]
 		vol_ave   = np.mean(vols)
 
-		hist,bins = np.histogram(dists, bins=np.linspace(r_min,r_max,num=n_bins+1))
+		hist,bins = np.histogram(dists, bins=np.linspace(r_min,r_max,num=n_bins+1,dtype=np.float32))
 
 		# Renormalise histogram
 		dr        = np.diff(bins)
 		vol_bins  = 4 * np.pi * bins[1:]**2 * dr
 
-		hist      = np.asfarray(hist)
+		hist      = np.asfarray(hist, dtype=np.float32)
 		
 		hist     /= self.n_part*(self.n_part-1)/2. * n_eq
 		hist     *= vol_ave/vol_bins
@@ -227,27 +231,44 @@ class Analyser():
 
 	# Pair spherical harmonic averages
 	def pair_sh_aves(self, snap, bins=np.linspace(0, 12, num=300+1), l_max=8):
-		n_bins        = len(bins)-1
-		r_min,r_max   = np.min(bins),np.max(bins)
-		
-		box           = snap.configuration.box[:3]
+		cdef int  n_part                                 = self.n_part
+		cdef int  n_bins                                 = len(bins)-1
+        
+		cdef int  n_sh		                             = self.sph_idx(l_max, l_max)+1
 
-		cm_pos        = snap.particles.position
-		quats         = snap.particles.orientation
+		cdef np.float32_t r_min                          = np.min(bins)
+		cdef np.float32_t r_max                          = np.max(bins)
+
+		cdef np.ndarray[np.float32_t, ndim=1]   box      = snap.configuration.box[:3]
+
+		cdef np.ndarray[np.float32_t, ndim=2]   cm_pos   = snap.particles.position
+		cdef np.ndarray[np.float32_t, ndim=2]   quats    = snap.particles.orientation
 		
 		# r-dependent coefficient (l1,m1,l2,m2,m,l) can be accessed as sh_aves[:,self.sph_idx(l1,m1),self.sph_idx(l2,m2),self.sph_idx(l,m)]
-		n_sh          = self.sph_idx(l_max, l_max)+1
-		sh_aves       = np.zeros([n_bins,n_sh,n_sh,n_sh], dtype=np.complex64)
-		
-		p_ctr         = np.zeros(n_bins)
+		cdef np.ndarray[np.complex64_t, ndim=1] sh1      = np.zeros(n_sh, dtype=np.complex64)
+		cdef np.ndarray[np.complex64_t, ndim=1] sh2      = np.zeros(n_sh, dtype=np.complex64)
+		cdef np.ndarray[np.complex64_t, ndim=1] sh       = np.zeros(n_sh, dtype=np.complex64)
+        
+		cdef np.ndarray[np.complex64_t, ndim=4] sh_aves  = np.zeros([n_bins,n_sh,n_sh,n_sh], dtype=np.complex64)
+
+		# Set particle counter per spherical shell
+		cdef np.ndarray[np.float32_t, ndim=1]   p_ctr    = np.zeros(n_bins, dtype=np.float32)
 		
 		# Project particle axes in nematic frame and fetch spherical angles
-		axes          = self.part_axis(quats)
-		frame         = self.nematic_q(snap, mode="frame")
+		cdef np.ndarray[np.float32_t, ndim=2]   axes     = self.part_axis(quats)
+		cdef np.ndarray[np.float32_t, ndim=2]   frame    = self.nematic_q(snap, mode="frame")
 		
-		axes_prj      = self.proj_vec(axes, frame)
-		thetas,phis   = self.sph_angs(axes_prj)
-
+		cdef np.ndarray[np.float32_t, ndim=2]   axes_prj = self.proj_vec(axes, frame)
+		cdef np.ndarray[np.float32_t, ndim=2]   angs     = self.sph_angs(axes_prj)
+        
+		cdef np.ndarray[np.float32_t, ndim=1]   thetas   = angs[0]
+		cdef np.ndarray[np.float32_t, ndim=1]   phis     = angs[1]
+		
+		cdef np.ndarray[np.float32_t, ndim=1]   vec, vec_prj
+		
+		cdef int          idx_part1,idx_part2,idx_axis,idx_r
+		cdef np.float32_t theta1,phi1,theta2,phi2,theta,phi,r
+		
 		for idx_part1 in range(self.n_part):
 			theta1,phi1 = thetas[idx_part1],phis[idx_part1]
 			sh1         = self.get_sph_harms(l_max, theta1, phi1)
@@ -275,7 +296,7 @@ class Analyser():
 					sh2           = self.get_sph_harms(l_max, theta2, phi2)
 
 					sh_aves[idx_r,...] += np.einsum("i,j,k", sh1, sh2, sh)
-	
-		p_ctr[p_ctr==0] = 1
+
+		p_ctr[p_ctr==0] = 1.
 		
 		return sh_aves.conj() / p_ctr[:,None,None,None]

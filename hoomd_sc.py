@@ -119,7 +119,7 @@ class HoomdSim():
 		boxmc = hpmc.update.boxmc(mc, betaP=betaP, seed=rng_seed+1)
 		
 		boxmc.length(delta=0.005, weight=1)
-		boxmc.aspect(delta=0.01, weight=1)
+		#boxmc.aspect(delta=0.01, weight=1)
 		
 		# Recovery configuration file
 		self.gsd_restart = dump.gsd(filename=file_restart, group=group.all(), truncate=True,
