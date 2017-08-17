@@ -4,4 +4,4 @@ from distutils.core import setup
 from Cython.Build import cythonize
 
 
-setup(ext_modules=cythonize("HoomdAnalysis.pyx"), include_dirs=[np.get_include()])
+setup(ext_modules=cythonize("*.pyx"), include_dirs=[np.get_include()])

@@ -1,2 +1,5 @@
-resources/HoomdAnalysis.pyc
+resources/*.c
+resources/*.so
+resources/build/
+
 resources/__pycache__/

@@ -1,29 +1,30 @@
-import numpy as np
+import  numpy as np
+cimport numpy as np
 
-from scipy.misc import factorial
+from math import factorial
 
 
-def cg(j1, j2, j3, m1, m2, m3):
+def cg(int j1, int j2, int j3, int m1, int m2, int m3):
 	"""Calculates the Clebsch-Gordan coefficient <j1,m1,j2,m2|j3,m3>
 		
 	Parameters
 	----------
-	j1 : float
+	j1 : int
 	Total angular momentum 1.
 		
-	j2 : float
+	j2 : int
 	Total angular momentum 2.
 		
-	j3 : float
+	j3 : int
 	Total angular momentum 3.
 		
-	m1 : float
+	m1 : int
 	z-component of angular momentum 1.
 		
-	m2 : float
+	m2 : int
 	z-component of angular momentum 2.
 		
-	m3 : float
+	m3 : int
 	z-component of angular momentum 3.
 		
 	Returns
@@ -32,8 +33,14 @@ def cg(j1, j2, j3, m1, m2, m3):
 	Requested Clebsch-Gordan coefficient.
 	"""
 	
+	cdef int          v,vmin,vmax
+	cdef np.float32_t C,S
+
+
 	if m3 != m1 + m2: return 0
-	
+
+	if ( (j3+j1-j2 < 0) | (j3-j1+j2 < 0) | (j1+j2-j3 < 0) ): return 0
+
 	vmin = int(np.max([-j1 + j2 + m3, -j1 + m1, 0]))
 	vmax = int(np.min([j2 + j3 + m1, j3 - j1 + j2, j3 + m3]))
 							
@@ -52,6 +59,4 @@ def cg(j1, j2, j3, m1, m2, m3):
 			factorial(j3 - j1 + j2 - v) / factorial(j3 + m3 - v) / \
 			factorial(v + j1 - j2 - m3)
 
-	C = C * S
-
-	return C
+	return C*S
