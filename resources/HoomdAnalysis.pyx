@@ -27,18 +27,18 @@ class Analyser():
 		self.n_part     = self.traj[0].particles.N
 
 
+	# Get 1d indices from harmonic index pairs (l,m)
+	def sph_idx(self, long l, long m):
+		if abs(m) > l: raise ValueError("Must have |m| <= l")
+
+		return long(l*(l+1)/2 + m)
+
+
 	# Fetch spherical harmonic of indices l,m
 	def get_sph_harm(self, long l, long m, double theta, double phi):
 		if abs(m) > l: raise ValueError("Must have |m| <= l")
 			
 		return cs.sph_harm(m, l, phi, theta)
-	
-	
-	# Get 1d indices from harmonic index pairs (l,m)
-	def sph_idx(self, long l, long m):
-		if abs(m) > l: raise ValueError("Must have |m| <= l")
-	
-		return long(l*(l+1)/2 + m)
 
 
 	# Fetch all harmonics up to rank l_max
