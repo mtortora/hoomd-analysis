@@ -75,7 +75,6 @@ bins,gr     = a.g_hist(n_eq, n_bins=n_bins, r_min=r_min, r_max=r_max)
 rho2        = a.average(a.pair_sh_aves, n_eq, log=True, bins=bins, l_max=l_max)
 rho2       *= 4*np.pi*rho**2 * gr[:,None,None,None]
 
-# Discard imaginary components
 f           = np.real(f)
 rho2        = np.real(rho2)
 
@@ -106,14 +105,13 @@ for l1 in range(l_print+1):
 print("\033[1;32m%d rho coefficients printed in '%s/'\033[0m" % (ctr,path))
 
 
-# Renormalised Clebsch-Gordon coefficients
+# Renormalised Clebsch-Gordan coefficients/sums
 def CG_norm(l, lp, lpp, m, mp, mpp):
 	coeff1 = cg(lpp, lp, l, mpp, mp, m)
 	coeff2 = cg(lpp, lp, l, 0,   0,  0)
 
 	return np.sqrt((2.*lpp+1)*(2.*lp+1)/(4*np.pi*(2.*l+1))) * coeff1*coeff2
 
-# Resummed Clebsch-Gordan coefficients
 def CG_sum(l1, l2, lp1, lp2, m1, m2):
 	lpps  = np.arange(0, l_max+1, 2)
 	
@@ -169,8 +167,9 @@ for l in range(l_max+1):
 print("\033[1;36mPrecomputed %d Clebsch-Gordan coefficients\033[0m" % np.size(CGs))
 
 
-# Cast equation in the form rho2 = alpha*h + v, with rho2,h,v of size n_tot
+# Cast equation in the form rho2_r = alpha*h_r + v, with rho2_r,h_r,v of size n_tot
 rho2 = rho2[:,sph_inds(l1s,m1s),sph_inds(l2s,m2s),sph_inds(ls,ms)]
+h    = np.zeros_like(rho2, dtype=np.float32)
 
 # Compute v
 v    = np.zeros([n_sh,n_sh,n_sh], dtype=np.float32)
@@ -205,8 +204,6 @@ for idx in range(n_tot):
 alpha_inv = np.linalg.inv(alpha)
 
 # Use alpha_inv,v to compute r-dependant h
-h         = np.zeros_like(rho2, dtype=np.float32)
-
 for idx_r,rho2_r in enumerate(rho2): h[idx_r,:] = np.dot(alpha_inv, rho2_r-v)
 
 

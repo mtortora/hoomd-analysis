@@ -27,19 +27,6 @@ class Analyser():
 		self.n_part     = self.traj[0].particles.N
 
 
-	# x,y,z box dimensions
-	def box_dims(self, snap): return snap.configuration.box[:3]
-	
-	
-	# Main particle axes from quaternions
-	def part_axis(self, quats):
-		u0 = 2 * (quats[...,1]*quats[...,3] + quats[...,0]*quats[...,2])
-		u1 = 2 * (quats[...,2]*quats[...,3] - quats[...,0]*quats[...,1])
-		u2 = 1 - 2.*quats[...,1]**2 - 2.*quats[...,2]**2
-	
-		return np.asarray([u0,u1,u2]).T
-
-
 	# Fetch spherical harmonic of indices l,m
 	def get_sph_harm(self, long l, long m, double theta, double phi):
 		if abs(m) > l: raise ValueError("Must have |m| <= l")
@@ -77,7 +64,20 @@ class Analyser():
 
 		return sh
 
-            
+
+	# x,y,z box dimensions
+	def box_dims(self, snap): return snap.configuration.box[:3]
+
+
+	# Main particle axes from quaternions
+	def part_axis(self, quats):
+		u0 = 2 * (quats[...,1]*quats[...,3] + quats[...,0]*quats[...,2])
+		u1 = 2 * (quats[...,2]*quats[...,3] - quats[...,0]*quats[...,1])
+		u2 = 1 - 2.*quats[...,1]**2 - 2.*quats[...,2]**2
+
+		return np.asarray([u0,u1,u2]).T
+
+
 	# Project 3xn vector(s) vecs in the frame of 3x3 matrix rot
 	def proj_vec(self, vecs, rot): return np.dot(rot.T, vecs.T).T
 	
@@ -231,10 +231,10 @@ class Analyser():
 
 	# Pair spherical harmonic averages
 	def pair_sh_aves(self, snap, bins=np.linspace(0, 12, num=300+1), l_max=8):
-		cdef int  n_part                                 = self.n_part
-		cdef int  n_bins                                 = len(bins)-1
+		cdef int          n_part                         = self.n_part
+		cdef int          n_bins                         = len(bins)-1
         
-		cdef int  n_sh		                             = self.sph_idx(l_max, l_max)+1
+		cdef int          n_sh                           = self.sph_idx(l_max, l_max)+1
 
 		cdef np.float32_t r_min                          = np.min(bins)
 		cdef np.float32_t r_max                          = np.max(bins)
