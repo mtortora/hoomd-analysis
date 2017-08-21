@@ -3,6 +3,8 @@
 import os
 import sys
 
+import numba
+
 import numpy as np
 import scipy.sparse as sps
 
@@ -42,9 +44,7 @@ l_print   = min(2, l_max)
 ##################################
 
 path_traj = os.path.dirname(file_traj)
-
 a         = Analyser(file_traj)
-sph_inds  = np.vectorize(a.sph_idx)
 
 
 ##################################
@@ -68,18 +68,16 @@ for l1 in range(l_max+1):
 								else: inds.append([l1,m1,l2,m2,l,-m1-m2])
 
 inds  = np.asarray(inds, dtype=np.int32)
-
 n_tot = len(inds)
-n_sh  = sph_inds(l_max, l_max)+1
 
 # Work out degeneracies
-deg   = np.zeros(n_tot)
+degs  = np.zeros(n_tot, dtype=np.int32)
 
 for idx in range(n_tot):
 	l1,m1,l2,m2,l,m = inds[idx]
 	
-	if m1 == m2 == 0: deg[idx] = 1
-	else:             deg[idx] = 2
+	if m1 == m2 == 0: degs[idx] = 1
+	else:             degs[idx] = 2
 
 # Tabulate relevant Clebsch-Gordan coefficients
 CGs = CG_tabulate(l_max)
@@ -157,21 +155,7 @@ print("\033[1;32m%d rho coefficients printed in '%s/'\033[0m" % (ctr,path))
 h     = np.zeros_like(rho2, dtype=np.float32)
 
 # Rescale rho2 by relevant degeneracies
-rho2 *= deg[None,:]
-
-# Symmetrised Clebsch-Gordan sums
-def CG_sum(l1, l2, lp1, lp2, m1, m2):
-	c_sum = 0.
-	
-	if ( (lp1 >= abs(m1)) & (lp2 >= abs(m2)) ):
-		lpps  = np.arange(0, l_max+1, 2)
-	
-		cgs1  = CGs[sph_inds(l1,m1),sph_inds(lp1,m1),sph_inds(lpps,0)] * f[::2]
-		cgs2  = CGs[sph_inds(l2,m2),sph_inds(lp2,m2),sph_inds(lpps,0)] * f[::2]
-	
-		c_sum = np.sum(np.outer(cgs1,cgs2))
-	
-	return c_sum
+rho2 *= degs[None,:]
 
 # Compute v
 v = np.zeros(n_tot, dtype=np.float32)
@@ -183,23 +167,60 @@ for idx in range(n_tot):
 		coeff  = rho**2 * np.sqrt(4*np.pi) * f[l1]*f[l2]
 		v[idx] = coeff
 
-# Compute alpha in sparse matric format
-rows,cols,data = [],[],[]
+# Symmetrised Clebsch-Gordan sums
+@numba.jit("i4(i4,i4)",nopython=True)
+def sph_inds(l, m): return int(l*(l+1)/2 + m)
 
-for idx1 in range(n_tot):
-	l1,m1,l2,m2,l,m = inds[idx1]
+@numba.jit("f4(f4[:,:,:],f4[:],i4,i4,i4,i4,i4,i4,i4)",nopython=True)
+def CG_sum(_CGs, _f, l1, l2, lp1, lp2, m1, m2, l_max):
+	c_sum = 0.
+	
+	if ( (lp1 >= abs(m1)) & (lp2 >= abs(m2)) ):
+		for lpp1 in range(l_max+1):
+			for lpp2 in range(l_max+1):
+				if ( (lpp1 % 2 == 0) & (lpp2 % 2 == 0) ):
+					coeff1 = _CGs[sph_inds(l1,m1),sph_inds(lp1,m1),sph_inds(lpp1,0)] * _f[lpp1]
+					coeff2 = _CGs[sph_inds(l2,m2),sph_inds(lp2,m2),sph_inds(lpp2,0)] * _f[lpp2]
+	
+					c_sum += coeff1*coeff2
+	
+	return c_sum
 
-	for idx2 in range(n_tot):
-		lp1,mp1,lp2,mp2,lp,mp = inds[idx2]
+# Alpha coefficient setter
+@numba.jit("void(f4[:,:,:],f4[:],i4[:,:],i4[:],i4[:],i4[:],f4[:],f4,i4)",nopython=True)
+def set_alpha_coeffs(_CGs, _f, _inds, _degs, _rows, _cols, _data, rho, l_max):
+	ctr   = 0
+	n_tot = len(_inds)
 
-		if ( (mp1 == m1) & (mp2 == m2) & (lp == l) & (mp == m) ):
-			coeff = rho**2 * CG_sum(l1, l2, lp1, lp2, m1, m2) * deg[idx2]
+	for idx1 in range(n_tot):
+		l1,m1,l2,m2,l,m = _inds[idx1]
+	
+		for idx2 in range(n_tot):
+			lp1,mp1,lp2,mp2,lp,mp = _inds[idx2]
+		
+			if ( (mp1 == m1) & (mp2 == m2) & (lp == l) & (mp == m) ):
+				coeff = rho**2 * CG_sum(_CGs, _f, l1, l2, lp1, lp2, m1, m2, l_max) * _degs[idx2]
 
-			rows.append(idx1)
-			cols.append(idx2)
-			data.append(coeff)
+				_rows[ctr] = idx1
+				_cols[ctr] = idx2
+				_data[ctr] = coeff
 
-alpha = sps.coo_matrix((data, (rows,cols)), shape=(n_tot,n_tot)).tocsc()
+				ctr       += 1
+
+# Find number of non-zero alpha elements
+ind_t      = np.delete(inds, [0,2], axis=1)
+ind_t,nums = np.unique(ind_t, axis=0, return_counts=True)
+
+n_coeffs   = np.sum(nums**2)
+
+# Empty containers for sparse coo_matrix constructor
+rows       = np.empty(n_coeffs, dtype=np.int32)
+cols       = np.empty(n_coeffs, dtype=np.int32)
+data       = np.empty(n_coeffs, dtype=np.float32)
+
+# Work-out alpha in sparse matrix format
+set_alpha_coeffs(CGs, f, inds, degs, rows, cols, data, rho, l_max)
+alpha = sps.coo_matrix((data, (rows,cols)), shape=(n_tot,n_tot), dtype=np.float32).tocsc()
 
 # Invert alpha and solve for h
 alpha_inv = sps.linalg.inv(alpha)
@@ -210,6 +231,8 @@ for idx_r,rho2_r in enumerate(rho2): h[idx_r,:] = alpha_inv.dot(rho2_r-v)
 h_res      = np.zeros([n_bins,2], dtype=np.float32)
 h_res[:,0] = bins[:-1]
 
+ctr  = 0
+
 for idx in range(n_tot):
 	l1,m1,l2,m2,l,m = inds[idx]
 	
@@ -218,5 +241,7 @@ for idx in range(n_tot):
 		
 		file_h = "%s/h_%d_%d_%d%d_%d%d_%d%d.res" % (path,n_eq,l_max,l1,m1,l2,m2,l,m)
 		np.savetxt(file_h, h_res)
+
+		ctr += 1
 
 print("\033[1;32m%d h coefficients printed in '%s/'\033[0m" % (ctr,path))

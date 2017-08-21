@@ -37,13 +37,6 @@ class Analyser():
 		return sph_harm(m, l, phi, theta)
 
 
-	# Get 1d indices from harmonic index pairs (l,m)
-	def sph_idx(self, l, m):
-		if abs(m) > l: raise ValueError("Must have |m| <= l")
-
-		return int(l*(l+1)/2 + m)
-
-
 	# x,y,z box dimensions
 	def box_dims(self, snap): return snap.configuration.box[:3]
 
