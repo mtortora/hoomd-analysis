@@ -1,17 +1,20 @@
+cimport cython
+
 import  numpy as np
 cimport numpy as np
 
 from math import factorial
 
 
-def cg(int j1, int j2, int j3, int m1, int m2, int m3):
+# Base Clebsch-Gordan computation
+cdef float _cg(int j1, int j2, int j3, int m1, int m2, int m3):
 	"""Calculates the Clebsch-Gordan coefficient <j1,m1,j2,m2|j3,m3>
 		
 	Parameters
 	----------
 	j1 : int
 	Total angular momentum 1.
-		
+
 	j2 : int
 	Total angular momentum 2.
 		
@@ -33,8 +36,8 @@ def cg(int j1, int j2, int j3, int m1, int m2, int m3):
 	Requested Clebsch-Gordan coefficient.
 	"""
 	
-	cdef int          v,vmin,vmax
-	cdef np.float32_t C,S
+	cdef int   v,vmin,vmax
+	cdef float C,S
 
 
 	if m3 != m1 + m2: return 0
@@ -48,8 +51,8 @@ def cg(int j1, int j2, int j3, int m1, int m2, int m3):
 				factorial(j3 - j1 + j2) * factorial(j1 + j2 - j3) *
 				factorial(j3 + m3) * factorial(j3 - m3) /
 				(factorial(j1 + j2 + j3 + 1) *
-				factorial(j1 - m1) * factorial(j1 + m1) *
-				factorial(j2 - m2) * factorial(j2 + m2)))
+				 factorial(j1 - m1) * factorial(j1 + m1) *
+				 factorial(j2 - m2) * factorial(j2 + m2)))
 
 	S = 0
 
@@ -60,3 +63,40 @@ def cg(int j1, int j2, int j3, int m1, int m2, int m3):
 			factorial(v + j1 - j2 - m3)
 
 	return C*S
+
+
+# Get 1d indices from harmonic index pairs (l,m)
+cdef Py_ssize_t _sph_idx(int l, int m) nogil: return int(l*(l+1)/2 + m)
+
+
+# Renormalised Clebsch-Gordan coefficients
+cdef float _cg_norm(int l, int lp, int lpp, int m, int mp, int mpp):
+	cdef float coeff1 = _cg(lpp, lp, l, mpp, mp, m)
+	cdef float coeff2 = _cg(lpp, lp, l, 0,   0,  0)
+        
+	return np.sqrt((2.*lpp+1)*(2.*lp+1)/(4*np.pi*(2.*l+1))) * coeff1*coeff2
+
+
+# Tabulate Clebsch-Gordan gamma coefficients
+cpdef np.ndarray[np.float32_t,ndim=3] CG_tabulate(int l_max):
+	cdef int        l,lp,lpp,m,mp,mpp
+	
+	cdef Py_ssize_t idx1,idx2,idx3
+	cdef Py_ssize_t n_sh = _sph_idx(l_max, l_max)+1
+
+	cdef np.ndarray[np.float32_t,ndim=3] cgs = np.empty([n_sh,n_sh,n_sh], dtype=np.float32)
+
+	for l in range(l_max+1):
+		for lp in range(l_max+1):
+			for lpp in range(l_max+1):
+				if ( (l % 2 == 0) & (lp % 2 == 0) & (lpp % 2 == 0) ):
+					for m in range(-l, l+1):
+						for mp in range(-lp, lp+1):
+							for mpp in range(-lpp, lpp+1):
+								idx1 = _sph_idx(l,m)
+								idx2 = _sph_idx(lp,mp)
+								idx3 = _sph_idx(lpp,mpp)
+                                    
+								cgs[idx1,idx2,idx3] = _cg_norm(l, lp, lpp, m, mp, mpp)
+
+	return cgs
