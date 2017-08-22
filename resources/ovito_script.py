@@ -74,7 +74,7 @@ def modify(frame, input, output):
 	qs[:,2,2]    = u2*u2
 
 	# Spectral analysis of the ensemble-averaged tensor q
-	q            = 3/2. * np.mean(qs, axis=0) - 1/2. * np.eye(3)
+	q            = 3/2. * qs.mean(axis=0) - 1/2. * np.eye(3)
 	evals, evecs = np.linalg.eigh(q)
 
 	# Reorder evals, evecs by decreasing eigenvalues

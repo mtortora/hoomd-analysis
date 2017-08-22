@@ -86,7 +86,7 @@ class Analyser():
 		qs[:,1,2]   = u1*u2
 		qs[:,2,2]   = u2*u2
 		
-		q           = 3/2. * np.mean(qs, axis=0) - 1/2. * np.eye(3)
+		q           = 3/2. * qs.mean(axis=0) - 1/2. * np.eye(3)
 		evals,evecs = np.linalg.eigh(q)
 
 		# Sort eigenvalues/vectors in increasing order
@@ -120,7 +120,7 @@ class Analyser():
 			vecs[crossed_inf,idx_axis] += box[idx_axis]
 			vecs[crossed_sup,idx_axis] -= box[idx_axis]
 		
-		dists = np.sqrt(np.sum(vecs**2, axis=1))
+		dists = np.sqrt((vecs**2).sum(axis=1))
 		
 		return dists
 
@@ -156,19 +156,21 @@ class Analyser():
 		dists     = self.accumulate(self.p_dists,  n_eq)
 
 		# Discard distances greater than r_max/smallest box dimension
-		max_dist  = np.min(dims)/2.
+		max_dist  = dims.min()/2.
 		r_max     = min(max_dist, r_max)
 		
 		dists     = dists[dists<r_max]
 
 		vols      = dims[:,0]*dims[:,1]*dims[:,2]
-		vol_ave   = np.mean(vols)
+		vol_ave   = vols.mean()
 
 		hist,bins = np.histogram(dists, bins=np.linspace(r_min,r_max,num=n_bins+1,dtype=np.float32))
 
 		# Renormalise histogram
-		dr        = np.diff(bins)
-		vol_bins  = 4 * np.pi * bins[1:]**2 * dr
+		rs        = bins[1:]
+		drs       = np.diff(bins)
+
+		vol_bins  = 4 * np.pi * rs**2 * drs
 
 		hist      = np.asfarray(hist, dtype=np.float32)
 		
@@ -190,7 +192,7 @@ class Analyser():
 		thetas,phis = self.sph_angs(axes_prj)
 		
 		for theta,phi in zip(thetas,phis):
-			for l in range(0, l_max+1, 2): sh_aves[l] += np.real(self.get_sph_harm(l, 0, theta, phi))
+			for l in range(0, l_max+1, 2): sh_aves[l] += (self.get_sph_harm(l, 0, theta, phi)).real
 
 		return sh_aves / self.n_part
 
@@ -199,13 +201,13 @@ class Analyser():
 	def pair_sh_aves(self, snap, bins=np.linspace(0, 12, num=300+1), inds=None):
         # Cythonise input data
 		cdef int        n_part = self.n_part
-		cdef int        l_max  = np.max(inds)
+		cdef int        l_max  = inds.max()
 
-		cdef float      r_min  = np.min(bins)
-		cdef float      r_max  = np.max(bins)
+		cdef float      r_min  = bins.min()
+		cdef float      r_max  = bins.max()
 
-		cdef Py_ssize_t n_tot  = len(inds)
-		cdef Py_ssize_t n_bins = len(bins)-1
+		cdef Py_ssize_t n_tot  = inds.shape[0]
+		cdef Py_ssize_t n_bins = bins.shape[0]-1
 
 		cdef Py_ssize_t n_sh   = _sph_idx(l_max, l_max)+1
 

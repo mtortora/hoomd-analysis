@@ -35,34 +35,37 @@ cdef float _cg(int j1, int j2, int j3, int m1, int m2, int m3):
 	cg_coeff : float
 	Requested Clebsch-Gordan coefficient.
 	"""
-	
-	cdef int   v,vmin,vmax
-	cdef float C,S
 
+	cdef float  cg_coeff
 
-	if m3 != m1 + m2: return 0
+	cdef double c,s
+	cdef int    v,vmin,vmax
 
-	if ( (j3+j1-j2 < 0) | (j3-j1+j2 < 0) | (j1+j2-j3 < 0) ): return 0
+	if m3 != m1 + m2: return 0.
 
-	vmin = int(np.max([-j1 + j2 + m3, -j1 + m1, 0]))
-	vmax = int(np.min([j2 + j3 + m1, j3 - j1 + j2, j3 + m3]))
+	if ( (j3+j1-j2 < 0) | (j3-j1+j2 < 0) | (j1+j2-j3 < 0) ): return 0.
+
+	vmin = int(max([-j1 + j2 + m3, -j1 + m1, 0]))
+	vmax = int(min([j2 + j3 + m1, j3 - j1 + j2, j3 + m3]))
 							
-	C = np.sqrt((2.0 * j3 + 1.0) * factorial(j3 + j1 - j2) *
+	c = np.sqrt((2. * j3 + 1.) * factorial(j3 + j1 - j2) *
 				factorial(j3 - j1 + j2) * factorial(j1 + j2 - j3) *
 				factorial(j3 + m3) * factorial(j3 - m3) /
 				(factorial(j1 + j2 + j3 + 1) *
 				 factorial(j1 - m1) * factorial(j1 + m1) *
 				 factorial(j2 - m2) * factorial(j2 + m2)))
 
-	S = 0
+	s = 0.
 
 	for v in range(vmin, vmax+1):
-		S += (-1.0) ** (v + j2 + m2) / factorial(v) * \
+		s += (-1.) ** (v + j2 + m2) / factorial(v) * \
 			factorial(j2 + j3 + m1 - v) * factorial(j1 - m1 + v) / \
 			factorial(j3 - j1 + j2 - v) / factorial(j3 + m3 - v) / \
 			factorial(v + j1 - j2 - m3)
 
-	return C*S
+	cg_coeff = c*s
+
+	return cg_coeff
 
 
 # Get 1d indices from harmonic index pairs (l,m)
@@ -77,14 +80,14 @@ cdef float _cg_norm(int l, int lp, int lpp, int m, int mp, int mpp):
 	return np.sqrt((2.*lpp+1)*(2.*lp+1)/(4*np.pi*(2.*l+1))) * coeff1*coeff2
 
 
-# Tabulate Clebsch-Gordan gamma coefficients
-cpdef np.ndarray[np.float32_t,ndim=3] CG_tabulate(int l_max):
+# Tabulate Clebsch-Gordan gamma coefficients up to rank l_max
+cpdef np.ndarray[np.float32_t,ndim=3] cg_tabulate(int l_max):
 	cdef int        l,lp,lpp,m,mp,mpp
 	
 	cdef Py_ssize_t idx1,idx2,idx3
 	cdef Py_ssize_t n_sh = _sph_idx(l_max, l_max)+1
 
-	cdef np.ndarray[np.float32_t,ndim=3] cgs = np.empty([n_sh,n_sh,n_sh], dtype=np.float32)
+	cdef np.ndarray[np.float32_t,ndim=3] cgs = np.zeros([n_sh,n_sh,n_sh], dtype=np.float32)
 
 	for l in range(l_max+1):
 		for lp in range(l_max+1):

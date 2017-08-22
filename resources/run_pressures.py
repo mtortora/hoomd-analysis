@@ -45,13 +45,13 @@ for idx_p,dir_p in enumerate(dirs_p):
 	vols      = dims[:,0]*dims[:,1]*dims[:,2]
 	etas      = a.n_part * v0/vols
 	
-	eta_ave   = np.mean(etas)
-	op_ave    = np.mean(ops)
+	eta_ave   = etas.mean()
+	op_ave    = ops.mean()
 	
 	p_adim    = ps[idx_p] * v0
 	
-	p_sim.append([eta_ave, p_adim, np.min(etas), np.max(etas)])
-	s_sim.append([eta_ave, op_ave, np.min(etas), np.max(etas), np.min(ops), np.max(ops)])
+	p_sim.append([eta_ave, p_adim, etas.min(), etas.max()])
+	s_sim.append([eta_ave, op_ave, etas.min(), etas.max(), ops.min(), ops.max()])
 
 file_p = "%s/p_%d.res" % (dir_a, n_eq)
 file_s = "%s/s_%d.res" % (dir_a, n_eq)

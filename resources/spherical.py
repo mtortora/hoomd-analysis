@@ -8,7 +8,9 @@ import numba
 import numpy as np
 import scipy.sparse as sps
 
-from clebsch import CG_tabulate
+from hankel import hk_t
+from clebsch import cg_tabulate
+
 from HoomdAnalysis import Analyser
 
 
@@ -35,7 +37,12 @@ if l_max % 2 != 0:
 r_min     = 0.
 r_max     = 12.
 
+k_min     = 0.
+k_max     = 2.
+
+n_k       = 50
 n_theta   = 100
+
 l_print   = min(2, l_max)
 
 
@@ -45,6 +52,27 @@ l_print   = min(2, l_max)
 
 path_traj = os.path.dirname(file_traj)
 a         = Analyser(file_traj)
+
+# Save data array up to rank l_print with corresponding x values
+def print_f(x_vals, data, path, name):
+	n_x      = x_vals.shape[0]
+	res      = np.zeros([n_x,2])
+	
+	ctr      = 0
+	res[:,0] = x_vals
+
+	for idx in range(n_tot):
+		l1,m1,l2,m2,l,m = inds[idx]
+	
+		if ( (l1 < l_print+1) & (l2 < l_print+1) & (l < l_print+1) ):
+			res[:,1] = data[:,idx]
+		
+			file_res = "%s/%s_%d_%d_%d%d_%d%d_%d%d.res" % (path,name,n_eq,l_max,l1,m1,l2,m2,l,m)
+			np.savetxt(file_res, res)
+		
+			ctr += 1
+
+	print("\033[1;32m%d %s coefficients printed in '%s/'\033[0m" % (ctr,name,path))
 
 
 ##################################
@@ -68,7 +96,7 @@ for l1 in range(l_max+1):
 								else: inds.append([l1,m1,l2,m2,l,-m1-m2])
 
 inds  = np.asarray(inds, dtype=np.int32)
-n_tot = len(inds)
+n_tot = inds.shape[0]
 
 # Work out degeneracies
 degs  = np.zeros(n_tot, dtype=np.int32)
@@ -80,7 +108,7 @@ for idx in range(n_tot):
 	else:             degs[idx] = 2
 
 # Tabulate relevant Clebsch-Gordan coefficients
-CGs = CG_tabulate(l_max)
+CGs = cg_tabulate(l_max)
 
 print("\033[1;36mPrecomputed %d Clebsch-Gordan coefficients\033[0m" % np.size(CGs))
 
@@ -93,13 +121,13 @@ print("\033[1;36mPrecomputed %d Clebsch-Gordan coefficients\033[0m" % np.size(CG
 f          = a.accumulate(a.single_sh_aves, n_eq, l_max=l_max)
 dims       = a.accumulate(a.box_dims,  n_eq)
 
-f          = np.mean(f, axis=0)
+f          = f.mean(axis=0)
 
 ops        = a.accumulate(a.nematic_q, n_eq)
-op_ave     = np.mean(ops)
+op_ave     = ops.mean()
 
 vols       = dims[:,0]*dims[:,1]*dims[:,2]
-rho        = np.mean(a.n_part/vols)
+rho        = (a.n_part/vols).mean()
 
 # Save projected orientation distribution function
 psi        = np.zeros([n_theta,2], dtype=np.float32)
@@ -109,42 +137,28 @@ psi[:,0]   = theta_grid
 
 for idx_theta,theta in enumerate(theta_grid):
 	for l in range(l_max+1):
-		if l % 2 == 0: psi[idx_theta,1] += np.real(f[l]*a.get_sph_harm(l, 0, theta, 0))
+		if l % 2 == 0: psi[idx_theta,1] += (f[l]*a.get_sph_harm(l, 0, theta, 0)).real
 
 file_psi = "%s/psi_%d_%d.res" % (path_traj, n_eq, l_max)
 np.savetxt(file_psi, psi)
 
-print("Order parameter: %f, <Y20>: %f" % (op_ave, np.real(f[2]*np.sqrt(4*np.pi/5.))))
+print("Order parameter: %f, <Y20>: %f" % (op_ave, (f[2]*np.sqrt(4*np.pi/5.)).real))
 print("\033[1;32mpsi printed to '%s'\033[0m" % file_psi)
 
 # Compute pair correlation function
-bins,gr     = a.g_hist(n_eq, n_bins=n_bins, r_min=r_min, r_max=r_max)
+bins,gr = a.g_hist(n_eq, n_bins=n_bins, r_min=r_min, r_max=r_max)
 
 # Average pair spherical harmonics
-rho2        = a.average(a.pair_sh_aves, n_eq, bins=bins, inds=inds)
-rho2       *= 4*np.pi*rho**2 * gr[:,None]
+rho2    = a.average(a.pair_sh_aves, n_eq, bins=bins, inds=inds)
+rho2   *= 4*np.pi*rho**2 * gr[:,None]
 
-# Save pair spherical harmonics up to rank l_print
-path        = "%s/harmonics" % path_traj
+# Save rho2 coefficients up to rank l_print
+path    = "%s/harmonics" % path_traj
 if not os.path.exists(path): os.makedirs(path)
 
-rho2_r      = np.zeros([n_bins,2], dtype=np.float32)
-rho2_r[:,0] = bins[:-1]
+rs      = bins[:-1]
 
-ctr         = 0
-
-for idx in range(n_tot):
-	l1,m1,l2,m2,l,m = inds[idx]
-	
-	if ( (l1 < l_print+1) & (l2 < l_print+1) & (l < l_print+1) ):
-		rho2_r[:,1] = rho2[:,idx]
-
-		file_rho    = "%s/rho_%d_%d%d_%d%d_%d%d.res" % (path,n_eq,l1,m1,l2,m2,l,m)
-		np.savetxt(file_rho, rho2_r)
-
-		ctr += 1
-
-print("\033[1;32m%d rho coefficients printed in '%s/'\033[0m" % (ctr,path))
+print_f(rs, rho2, path, 'rho')
 
 
 ##################################
@@ -158,21 +172,26 @@ h     = np.zeros_like(rho2, dtype=np.float32)
 rho2 *= degs[None,:]
 
 # Compute v
-v = np.zeros(n_tot, dtype=np.float32)
+@numba.jit("void(f4[:],i4[:,:],f4[:],f4)",nopython=True)
+def set_v_coeffs(_f, _inds, _v, rho):
+	n_tot = _inds.shape[0]
 
-for idx in range(n_tot):
-	l1,m1,l2,m2,l,m = inds[idx]
+	for idx in range(n_tot):
+		l1,m1,l2,m2,l,m = _inds[idx]
 	
-	if ( (m1 == 0) & (m2 == 0) & (l == 0) & (m == 0) ):
-		coeff  = rho**2 * np.sqrt(4*np.pi) * f[l1]*f[l2]
-		v[idx] = coeff
+		if ( (m1 == 0) & (m2 == 0) & (l == 0) & (m == 0) ):
+			coeff   = rho**2 * np.sqrt(4*np.pi) * _f[l1]*_f[l2]
+			_v[idx] = coeff
+
+v = np.zeros(n_tot, dtype=np.float32)
+set_v_coeffs(f, inds, v, rho)
 
 # Symmetrised Clebsch-Gordan sums
 @numba.jit("i4(i4,i4)",nopython=True)
 def sph_inds(l, m): return int(l*(l+1)/2 + m)
 
 @numba.jit("f4(f4[:,:,:],f4[:],i4,i4,i4,i4,i4,i4,i4)",nopython=True)
-def CG_sum(_CGs, _f, l1, l2, lp1, lp2, m1, m2, l_max):
+def cg_sum(_CGs, _f, l1, l2, lp1, lp2, m1, m2, l_max):
 	c_sum = 0.
 	
 	if ( (lp1 >= abs(m1)) & (lp2 >= abs(m2)) ):
@@ -190,7 +209,7 @@ def CG_sum(_CGs, _f, l1, l2, lp1, lp2, m1, m2, l_max):
 @numba.jit("void(f4[:,:,:],f4[:],i4[:,:],i4[:],i4[:],i4[:],f4[:],f4,i4)",nopython=True)
 def set_alpha_coeffs(_CGs, _f, _inds, _degs, _rows, _cols, _data, rho, l_max):
 	ctr   = 0
-	n_tot = len(_inds)
+	n_tot = _inds.shape[0]
 
 	for idx1 in range(n_tot):
 		l1,m1,l2,m2,l,m = _inds[idx1]
@@ -199,7 +218,7 @@ def set_alpha_coeffs(_CGs, _f, _inds, _degs, _rows, _cols, _data, rho, l_max):
 			lp1,mp1,lp2,mp2,lp,mp = _inds[idx2]
 		
 			if ( (mp1 == m1) & (mp2 == m2) & (lp == l) & (mp == m) ):
-				coeff = rho**2 * CG_sum(_CGs, _f, l1, l2, lp1, lp2, m1, m2, l_max) * _degs[idx2]
+				coeff      = rho**2 * cg_sum(_CGs,_f,l1,l2,lp1,lp2,m1,m2,l_max) * _degs[idx2]
 
 				_rows[ctr] = idx1
 				_cols[ctr] = idx2
@@ -211,7 +230,7 @@ def set_alpha_coeffs(_CGs, _f, _inds, _degs, _rows, _cols, _data, rho, l_max):
 ind_t      = np.delete(inds, [0,2], axis=1)
 ind_t,nums = np.unique(ind_t, axis=0, return_counts=True)
 
-n_coeffs   = np.sum(nums**2)
+n_coeffs   = (nums**2).sum()
 
 # Empty containers for sparse coo_matrix constructor
 rows       = np.empty(n_coeffs, dtype=np.int32)
@@ -227,21 +246,22 @@ alpha_inv = sps.linalg.inv(alpha)
 
 for idx_r,rho2_r in enumerate(rho2): h[idx_r,:] = alpha_inv.dot(rho2_r-v)
 
-# Print h coefficients up to rank l_print
-h_res      = np.zeros([n_bins,2], dtype=np.float32)
-h_res[:,0] = bins[:-1]
+# Save h coefficients up to rank l_print
+print_f(rs, h, path, 'h')
 
-ctr  = 0
 
-for idx in range(n_tot):
-	l1,m1,l2,m2,l,m = inds[idx]
-	
-	if ( (l1 < l_print+1) & (l2 < l_print+1) & (l < l_print+1) ):
-		h_res[:,1] = h[:,idx]
-		
-		file_h = "%s/h_%d_%d_%d%d_%d%d_%d%d.res" % (path,n_eq,l_max,l1,m1,l2,m2,l,m)
-		np.savetxt(file_h, h_res)
+##################################
+## Hankel transform             ##
+##################################
 
-		ctr += 1
+drs    = np.diff(bins)
 
-print("\033[1;32m%d h coefficients printed in '%s/'\033[0m" % (ctr,path))
+# Satisfy the Shannon-Nyquist criteria
+dr_max = drs.max()
+k_max  = min(k_max, np.pi/dr_max)
+
+ks     = np.linspace(k_min, k_max, num=n_k, dtype=np.float32)
+hk     = hk_t(h, inds, bins, ks)
+
+# Save hk coefficients up to rank l_print
+print_f(ks, hk, path, 'hk')
