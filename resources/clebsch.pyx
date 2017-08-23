@@ -36,10 +36,10 @@ cdef float _cg(int j1, int j2, int j3, int m1, int m2, int m3):
 	Requested Clebsch-Gordan coefficient.
 	"""
 
-	cdef float  cg_coeff
+	cdef int    v,vmin,vmax
 
 	cdef double c,s
-	cdef int    v,vmin,vmax
+	cdef float  cg_coeff
 
 	if m3 != m1 + m2: return 0.
 

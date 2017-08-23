@@ -8,8 +8,8 @@ import numba
 import numpy as np
 import scipy.sparse as sps
 
-from hankel import hk_t
 from clebsch import cg_tabulate
+from hankel  import hk_t, inv_hk_t
 
 from HoomdAnalysis import Analyser
 
@@ -40,7 +40,7 @@ r_max     = 12.
 k_min     = 0.
 k_max     = 2.
 
-n_k       = 50
+n_k       = 20
 n_theta   = 100
 
 l_print   = min(2, l_max)
@@ -52,6 +52,8 @@ l_print   = min(2, l_max)
 
 path_traj = os.path.dirname(file_traj)
 a         = Analyser(file_traj)
+
+#sps.linalg.use_solver(assumeSortedIndices=True, useUmfpack=True)
 
 # Save data array up to rank l_print with corresponding x values
 def print_f(x_vals, data, path, name):
@@ -146,17 +148,17 @@ print("Order parameter: %f, <Y20>: %f" % (op_ave, (f[2]*np.sqrt(4*np.pi/5.)).rea
 print("\033[1;32mpsi printed to '%s'\033[0m" % file_psi)
 
 # Compute pair correlation function
-bins,gr = a.g_hist(n_eq, n_bins=n_bins, r_min=r_min, r_max=r_max)
+r_bins,gr = a.g_hist(n_eq, n_bins=n_bins, r_min=r_min, r_max=r_max)
 
 # Average pair spherical harmonics
-rho2    = a.average(a.pair_sh_aves, n_eq, bins=bins, inds=inds)
-rho2   *= 4*np.pi*rho**2 * gr[:,None]
+rho2      = a.average(a.pair_sh_aves, n_eq, bins=r_bins, inds=inds)
+rho2     *= 4*np.pi*rho**2 * gr[:,None]
 
 # Save rho2 coefficients up to rank l_print
-path    = "%s/harmonics" % path_traj
+path      = "%s/harmonics" % path_traj
 if not os.path.exists(path): os.makedirs(path)
 
-rs      = bins[:-1]
+rs        = r_bins[1:]
 
 print_f(rs, rho2, path, 'rho')
 
@@ -186,20 +188,32 @@ def set_v_coeffs(_f, _inds, _v, rho):
 v = np.zeros(n_tot, dtype=np.float32)
 set_v_coeffs(f, inds, v, rho)
 
-# Symmetrised Clebsch-Gordan sums
+# Partial Clebsch-Gordan sums
 @numba.jit("i4(i4,i4)",nopython=True)
-def sph_inds(l, m): return int(l*(l+1)/2 + m)
+def sph_idx(l, m): return int(l*(l+1)/2 + m)
+
+@numba.jit("f4(f4[:,:,:],f4[:],i4,i4,i4,i4)",nopython=True)
+def cg_1sum(_CGs, _f, l3, lp3, m3, l_max):
+	c_sum = 0.
+
+	if lp3 >= abs(m3):
+		for lpp3 in range(l_max+1):
+			if lpp3 % 2 == 0:
+				coeff  = _CGs[sph_idx(l3,m3),sph_idx(lp3,m3),sph_idx(lpp3,0)] * _f[lpp3]
+				c_sum += coeff
+
+	return c_sum
 
 @numba.jit("f4(f4[:,:,:],f4[:],i4,i4,i4,i4,i4,i4,i4)",nopython=True)
-def cg_sum(_CGs, _f, l1, l2, lp1, lp2, m1, m2, l_max):
+def cg_2sum(_CGs, _f, l1, l2, lp1, lp2, m1, m2, l_max):
 	c_sum = 0.
 	
 	if ( (lp1 >= abs(m1)) & (lp2 >= abs(m2)) ):
 		for lpp1 in range(l_max+1):
 			for lpp2 in range(l_max+1):
 				if ( (lpp1 % 2 == 0) & (lpp2 % 2 == 0) ):
-					coeff1 = _CGs[sph_inds(l1,m1),sph_inds(lp1,m1),sph_inds(lpp1,0)] * _f[lpp1]
-					coeff2 = _CGs[sph_inds(l2,m2),sph_inds(lp2,m2),sph_inds(lpp2,0)] * _f[lpp2]
+					coeff1 = _CGs[sph_idx(l1,m1),sph_idx(lp1,m1),sph_idx(lpp1,0)] * _f[lpp1]
+					coeff2 = _CGs[sph_idx(l2,m2),sph_idx(lp2,m2),sph_idx(lpp2,0)] * _f[lpp2]
 	
 					c_sum += coeff1*coeff2
 	
@@ -218,7 +232,7 @@ def set_alpha_coeffs(_CGs, _f, _inds, _degs, _rows, _cols, _data, rho, l_max):
 			lp1,mp1,lp2,mp2,lp,mp = _inds[idx2]
 		
 			if ( (mp1 == m1) & (mp2 == m2) & (lp == l) & (mp == m) ):
-				coeff      = rho**2 * cg_sum(_CGs,_f,l1,l2,lp1,lp2,m1,m2,l_max) * _degs[idx2]
+				coeff      = rho**2 * cg_2sum(_CGs,_f,l1,l2,lp1,lp2,m1,m2,l_max) * _degs[idx2]
 
 				_rows[ctr] = idx1
 				_cols[ctr] = idx2
@@ -239,7 +253,7 @@ data       = np.empty(n_coeffs, dtype=np.float32)
 
 # Work-out alpha in sparse matrix format
 set_alpha_coeffs(CGs, f, inds, degs, rows, cols, data, rho, l_max)
-alpha = sps.coo_matrix((data, (rows,cols)), shape=(n_tot,n_tot), dtype=np.float32).tocsc()
+alpha = sps.coo_matrix((data, (rows,cols)), shape=(n_tot,n_tot), dtype=np.float64).tocsc()
 
 # Invert alpha and solve for h
 alpha_inv = sps.linalg.inv(alpha)
@@ -254,14 +268,105 @@ print_f(rs, h, path, 'h')
 ## Hankel transform             ##
 ##################################
 
-drs    = np.diff(bins)
+drs    = np.diff(r_bins)
 
 # Satisfy the Shannon-Nyquist criteria
 dr_max = drs.max()
 k_max  = min(k_max, np.pi/dr_max)
 
-ks     = np.linspace(k_min, k_max, num=n_k, dtype=np.float32)
-hk     = hk_t(h, inds, bins, ks)
+k_bins = np.linspace(k_min, k_max, num=n_k+1, dtype=np.float32)
+
+ks     = k_bins[1:]
+hk     = hk_t(h, inds, r_bins, ks)
 
 # Save hk coefficients up to rank l_print
 print_f(ks, hk, path, 'hk')
+
+
+##################################
+## Ornstein-Zernike (OZ) solver ##
+##################################
+
+# Invert Fourier-space OZ in the form h_k = beta_k*c_k with h_k,c_k of size n_tot
+ck  = np.zeros_like(hk, dtype=np.float32)
+
+# Rescale hk by relevant degeneracies
+hk *= degs[None,:]
+
+# Convenience Zeta function for non-diagonal beta_k coefficients
+@numba.jit("f4(f4[:,:,:],f4[:],f4[:],i4[:,:],i4[:],i4,i4,i4,i4,i4,i4,i4,i4,i4)",nopython=True)
+def zeta(_CGs, _hk, _f, _inds, _degs, l3, m3, l2, m2, l, m, lp, mp, l_max):
+	c_sum = 0.
+	n_tot = _inds.shape[0]
+
+	for idx in range(n_tot):
+		lp3,mp3,lp2,mp2,lpp,mpp = _inds[idx]
+
+		if ( (mp3 == m3) & (lp2 == l2) & (mp2 == m2) ):
+			coeff  = (-1.)**m3 * _CGs[sph_idx(l,m),sph_idx(lp,mp),sph_idx(lpp,mpp)]
+			coeff *= cg_1sum(_CGs, _f, l3, lp3, m3, l_max)
+
+			c_sum += coeff * _hk[idx]
+
+	return c_sum
+
+# Beta coefficient setter
+@numba.jit("void(f4[:,:,:],f4[:],f4[:],i4[:,:],i4[:],i4[:],i4[:],f4[:],f4,i4)",nopython=True)
+def set_beta_coeffs(_CGs, _hk, _f, _inds, _degs, _rows, _cols, _data, rho, l_max):
+	ctr   = 0
+	n_tot = _inds.shape[0]
+	
+	for idx1 in range(n_tot):
+		l1,m1,l2,m2,l,m = _inds[idx1]
+		
+		for idx2 in range(n_tot):
+			lp1,mp1,lp2,mp2,lp,mp = _inds[idx2]
+			
+			if ( (lp1 == l1) & (mp1 == m1) ):
+				coeff  = zeta(_CGs,_hk,_f,_inds,_degs,lp2,mp2,l2,m2,l,m,lp,mp,l_max)
+				coeff *= rho * _degs[idx2]
+				
+				if ( (lp2 == l2) & (mp2 == m2) & (lp == l) & (mp == m) ):
+					coeff += 1. * _degs[idx2]
+				
+				_rows[ctr] = idx1
+				_cols[ctr] = idx2
+				_data[ctr] = coeff
+				
+				ctr       += 1
+
+# Find number of non-zero beta elements
+ind_t      = np.delete(inds, [2,3,4,5], axis=1)
+ind_t,nums = np.unique(ind_t, axis=0, return_counts=True)
+				
+n_coeffs   = (nums**2).sum()
+				
+# Empty containers for sparse coo_matrix constructor
+rows       = np.empty(n_coeffs, dtype=np.int32)
+cols       = np.empty(n_coeffs, dtype=np.int32)
+data       = np.empty(n_coeffs, dtype=np.float32)
+
+# Iterate over k-grid
+for idx_k,h_k in enumerate(hk):
+	
+	# Work-out beta in sparse matrix format
+	set_beta_coeffs(CGs, h_k, f, inds, degs, rows, cols, data, rho, l_max)
+	beta = sps.coo_matrix((data, (rows,cols)), shape=(n_tot,n_tot), dtype=np.float64).tocsc()
+
+	# Solve for ck
+	ck[idx_k,:] = sps.linalg.spsolve(beta, h_k)
+
+	print("\033[1;36mSuccesfully resolved %d out of %d iso-k surfaces\033[0m" % (idx_k+1,n_k))
+
+# Save ck coefficients up to rank l_print
+print_f(ks, ck, path, 'ck')
+
+
+##################################
+## Inverse Hankel transform     ##
+##################################
+
+c = inv_hk_t(ck, inds, k_bins, rs)
+
+# Save hk coefficients up to rank l_print
+print_f(rs, c, path, 'c')
