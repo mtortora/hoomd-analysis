@@ -44,7 +44,7 @@ cpdef np.ndarray[np.float32_t,ndim=2] hk_t(np.ndarray[np.float32_t,ndim=2] h,
 	return hk
 
 
-# Computes inverse Hankel transform for h matrix with coefficients inds
+# Computes inverse Hankel transform for hk matrix with coefficients inds
 cpdef np.ndarray[np.float32_t,ndim=2] inv_hk_t(np.ndarray[np.float32_t,ndim=2] hk,
                                                np.ndarray[np.int32_t,  ndim=2] inds,
                                                np.ndarray[np.float32_t,ndim=1] k_bins,
