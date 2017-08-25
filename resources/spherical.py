@@ -38,9 +38,9 @@ r_min     = 0.
 r_max     = 12.
 
 k_min     = 0.
-k_max     = 3.
+k_max     = 4.
 
-n_k       = 50
+n_k       = 100
 n_theta   = 100
 
 l_print   = min(2, l_max)
@@ -288,7 +288,7 @@ drs    = np.diff(r_bins)
 dr_max = drs.max()
 k_max  = min(k_max, np.pi/dr_max)
 
-k_bins = np.linspace(k_min, k_max, num=n_k+1, dtype=np.float32)
+k_bins = np.linspace(k_min**(1/2.), k_max**(1/2.), num=n_k+1, dtype=np.float32)**2
 
 ks     = k_bins[1:]
 hk     = hk_t(h, inds, r_bins, ks)
@@ -379,9 +379,7 @@ rows       = np.zeros(n_coeffs, dtype=np.int32)
 cols       = np.zeros(n_coeffs, dtype=np.int32)
 data       = np.zeros(n_coeffs, dtype=np.float32)
 
-# Iterate over k-grid
 for idx_k,h_k in enumerate(hk):
-	
 	# Work-out beta in sparse matrix format
 	set_beta_coeffs(CGs, h_k, f, inds, degs, rows, cols, data, rho, l_max)
 	beta = sps.coo_matrix((data, (rows,cols)), shape=(n_tot,n_tot), dtype=np.float32).tocsc()
@@ -405,3 +403,45 @@ h_inv = inv_hk_t(hk, inds, k_bins, rs)
 # Save coefficients up to rank l_print
 print_f(rs, c,     path, 'c')
 print_f(rs, h_inv, path, 'h_inv')
+
+
+##################################
+## Frank elastic constants      ##
+##################################
+
+cii  = np.zeros([n_k,3], dtype=np.float32)
+
+vi   = np.asarray([-1,-1,2], dtype=np.float32)
+wi   = np.asarray([-1, 1,0], dtype=np.float32)
+
+# Work out cii coefficients
+for idx_k in range(n_k):
+	for idx in range(n_tot):
+		l1,m1,l2,m2,l,m = inds[idx]
+			
+		if ( (abs(m1) == 1) & (abs(m2) == 1) ):
+			c_sum  = np.zeros(3, dtype=np.float32)
+			pref   = np.sqrt(l1*(l1+1.)*l2*(l2+1.)) * f[l1]*f[l2]
+
+			if ( (l == 0) ):
+				c_sum += ck[idx_k,idx]*degs[idx]
+
+			if ( (l == 2) & (m == 0) ):
+				c_sum += vi * np.sqrt(5)/2.  * ck[idx_k,idx]*degs[idx]
+
+			if ( (l == 2) & (abs(m) == 2) ):
+				c_sum += wi * np.sqrt(15/8.) * ck[idx_k,idx]*degs[idx]
+
+			cii[idx_k,:] += rho**2/(8*np.sqrt(np.pi)) * pref*c_sum
+
+# Print cii's to file
+cres      = np.zeros([n_k,2], dtype=np.float32)
+cres[:,0] = ks
+
+for i in range(3):
+	cres[:,1] = cii[:,i]
+
+	file_res = "%s/c%d_%d_%d.res" % (path,i+1,n_eq,l_max)
+	np.savetxt(file_res, cres)
+
+	print("\033[1;32mPrinted C%d to '%s/'\033[0m" % (i+1,file_res))

@@ -23,11 +23,11 @@ class Analyser():
 			print("\033[1;31mCouldn't find file '%s'\033[0m" % file_traj)
 			sys.exit()
 
-		data            = gsd.pygsd.GSDFile(open(file_traj, 'rb'))
-		self.traj       = gsd.hoomd.HOOMDTrajectory(data)
+		data        = gsd.pygsd.GSDFile(open(file_traj, 'rb'))
+		self.traj   = gsd.hoomd.HOOMDTrajectory(data)
 		
-		self.n_conf     = len(self.traj)
-		self.n_part     = self.traj[0].particles.N
+		self.n_conf = len(self.traj)
+		self.n_part = self.traj[0].particles.N
 
 
 	# Fetch spherical harmonic of indices l,m
