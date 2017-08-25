@@ -43,6 +43,8 @@ k_max     = 4.
 n_k       = 100
 n_theta   = 100
 
+n_fit     = 5
+
 l_print   = min(2, l_max)
 
 
@@ -409,10 +411,10 @@ print_f(rs, h_inv, path, 'h_inv')
 ## Frank elastic constants      ##
 ##################################
 
-cii  = np.zeros([n_k,3], dtype=np.float32)
+cii = np.zeros([n_k,3], dtype=np.float32)
 
-vi   = np.asarray([-1,-1,2], dtype=np.float32)
-wi   = np.asarray([-1, 1,0], dtype=np.float32)
+vi  = np.asarray([-1,-1,2], dtype=np.float32)
+wi  = np.asarray([-1, 1,0], dtype=np.float32)
 
 # Work out cii coefficients
 for idx_k in range(n_k):
@@ -434,14 +436,30 @@ for idx_k in range(n_k):
 
 			cii[idx_k,:] += rho**2/(8*np.sqrt(np.pi)) * pref*c_sum
 
-# Print cii's to file
-cres      = np.zeros([n_k,2], dtype=np.float32)
+# Print cii's to files
+cres      = np.zeros([n_k,3], dtype=np.float32)
 cres[:,0] = ks
 
-for i in range(3):
-	cres[:,1] = cii[:,i]
+ki        = np.zeros(3, dtype=np.float32)
 
-	file_res = "%s/c%d_%d_%d.res" % (path,i+1,n_eq,l_max)
+for i in range(3):
+	# Quadratic initial fit over n_fit points for ki's
+	coeffs    = np.polyfit(ks[:n_fit]**2, cii[:n_fit,i], 1)
+	fit       = np.poly1d(coeffs)(ks**2)
+	
+	ki[i]     = coeffs[0]/2.
+
+	cres[:,1] = cii[:,i]
+	cres[:,2] = fit
+	
+	file_res  = "%s/c%d_%d_%d.res" % (path,i+1,n_eq,l_max)
 	np.savetxt(file_res, cres)
 
-	print("\033[1;32mPrinted C%d to '%s/'\033[0m" % (i+1,file_res))
+	print("\033[1;32mPrinted C%d to '%s'\033[0m" % (i+1,file_res))
+
+# Print ki's to files
+file_ki = "%s/ks_%d_%d_%d.res" % (path,n_eq,l_max,n_fit)
+np.savetxt(file_ki, ki)
+
+print("\033[1;32mBest-fit Ks printed to '%s'\033[0m" % file_ki)
+print("K1: %.3f, K2: %.3f, K3: %.3f (fitted over %d points)" % (ki[0],ki[1],ki[2],n_fit))
