@@ -260,7 +260,7 @@ class Analyser():
 
 				if r_min < r < r_max:
 					idx_r         = np.digitize(r, bins_c)-1
-					p_ctr[idx_r] += 1
+					p_ctr[idx_r] += 2
 					
 					vec_prj       = self.proj_vec(vec, frame)
 					
@@ -283,7 +283,7 @@ class Analyser():
 						idx2 = _sph_idx(l2, m2)
 						idx  = _sph_idx(l, m)
 
-						sh_a[idx_r,idx_h] += (sh1[idx1]*sh2[idx2]*sh[idx]).real
+						sh_a[idx_r,idx_h] += ((sh1[idx1]*sh2[idx2]+sh2[idx1]*sh1[idx2])*sh[idx]).real
 
 		p_ctr[p_ctr==0] = 1.
 		

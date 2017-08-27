@@ -34,18 +34,18 @@ if l_max % 2 != 0:
 	
 	print("Warning: l_max is odd - rounding down to %d" % l_max)
 
-r_min     = 0.
-r_max     = 12.
+r_min   = 0.
+r_max   = 12.
 
-k_min     = 0.
-k_max     = 4.
+k_min   = 0.
+k_max   = 4.
 
-n_k       = 100
-n_theta   = 100
+n_k     = 100
+n_t     = 250
 
-n_fit     = 5
+n_fit   = 5
 
-l_print   = min(2, l_max)
+l_print = min(2, l_max)
 
 
 ##################################
@@ -55,6 +55,7 @@ l_print   = min(2, l_max)
 path_traj = os.path.dirname(file_traj)
 a         = Analyser(file_traj)
 
+# Setup sparse solver
 sps.linalg.use_solver(assumeSortedIndices=True, useUmfpack=False)
 
 # Save data array up to rank l_print with corresponding x values
@@ -90,16 +91,14 @@ inds = []
 # Prune symmetrically-redundant indices
 for l1 in range(l_max+1):
 	if l1 % 2 == 0:
-		for m1 in range(l1+1):
-			for l2 in range(l_max+1):
+		for m1 in range(-l1, l1+1):
+			for l2 in range(l1, l_max+1):
 				if l2 % 2 == 0:
-					for m2 in range(-l2, l2+1):
-						for l in range(abs(m1+m2), l_max+1):
-							if l % 2 == 0:
-								if m1 == 0:
-									if m1+m2 >= 0: inds.append([l1,m1,l2,m2,l,-m1-m2])
-								
-								else: inds.append([l1,m1,l2,m2,l,-m1-m2])
+					for m2 in range(m1, l2+1):
+						if m1 + m2 >= 0:
+							for l in range(m1+m2, l_max+1):
+								if l % 2 == 0:
+									inds.append([l1,m1,l2,m2,l,-m1-m2])
 
 inds  = np.asarray(inds, dtype=np.int32)
 n_tot = inds.shape[0]
@@ -110,8 +109,13 @@ degs  = np.zeros(n_tot, dtype=np.int32)
 for idx in range(n_tot):
 	l1,m1,l2,m2,l,m = inds[idx]
 	
-	if m1 == m2 == 0: degs[idx] = 1
-	else:             degs[idx] = 2
+	if m1 == m2 == 0:
+		if l1 == l2: degs[idx] = 1
+		else: degs[idx] = 2
+	
+	else:
+		if ( (abs(m1) == abs(m2)) & (l1 == l2) ): degs[idx] = 2
+		else: degs[idx] = 4
 
 # Tabulate relevant Clebsch-Gordan coefficients
 CGs = cg_tabulate(l_max)
@@ -120,41 +124,65 @@ print("\033[1;36mPrecomputed %d Clebsch-Gordan coefficients\033[0m" % np.size(CG
 
 
 ##################################
-## Ensemble averages            ##
+## Single-particle averages     ##
 ##################################
 
 # Average single particle harmonics, order parameter and box volumes
-f          = a.accumulate(a.single_sh_aves, n_eq, l_max=l_max)
-dims       = a.accumulate(a.box_dims,  n_eq)
+f      = a.accumulate(a.single_sh_aves, n_eq, l_max=l_max)
+dims   = a.accumulate(a.box_dims,  n_eq)
 
-f          = f.mean(axis=0)
+f      = f.mean(axis=0)
 
-ops        = a.accumulate(a.nematic_q, n_eq)
-op_ave     = ops.mean()
+ops    = a.accumulate(a.nematic_q, n_eq)
+op_ave = ops.mean()
 
-vols       = dims[:,0]*dims[:,1]*dims[:,2]
-rho        = (a.n_part/vols).mean()
+vols   = dims[:,0]*dims[:,1]*dims[:,2]
+rho    = (a.n_part/vols).mean()
 
-# Save projected orientation distribution function
-psi        = np.zeros([n_theta,2], dtype=np.float32)
-theta_grid = np.linspace(0, np.pi, num=n_theta, dtype=np.float32)
+# Compute orientation distribution function
+t_bins = np.linspace(0, np.pi, num=n_t+1, dtype=np.float32)
 
-psi[:,0]   = theta_grid
+ts     = t_bins[1:]
+psis   = np.zeros(n_t+1, dtype=np.float32)
 
-for idx_theta,theta in enumerate(theta_grid):
+for idx_t,t in enumerate(t_bins):
 	for l in range(l_max+1):
-		if l % 2 == 0: psi[idx_theta,1] += (f[l]*a.get_sph_harm(l, 0, theta, 0)).real
+		if l % 2 == 0: psis[idx_t] += (f[l]*a.get_sph_harm(l, 0, t, 0)).real
 
-file_psi = "%s/psi_%d_%d.res" % (path_traj, n_eq, l_max)
-np.savetxt(file_psi, psi)
+print("Order parameter: %f, <Y20>: %f" % (op_ave, f[2]*np.sqrt(4*np.pi/5.)))
 
-print("Order parameter: %f, <Y20>: %f" % (op_ave, (f[2]*np.sqrt(4*np.pi/5.)).real))
+psi_res      = np.zeros([n_t+1,2], dtype=np.float32)
+
+psi_res[:,0] = t_bins
+psi_res[:,1] = psis
+
+file_f       = "%s/f_%d_%d.res"   % (path_traj, n_eq, l_max)
+file_psi     = "%s/psi_%d_%d.res" % (path_traj, n_eq, l_max)
+
+np.savetxt(file_f, f)
+np.savetxt(file_psi, psi_res)
+
+print("\033[1;32mf's printed to '%s'\033[0m" % file_f)
 print("\033[1;32mpsi printed to '%s'\033[0m" % file_psi)
 
-# Compute pair correlation function
+# Gubbins equation
+dts = np.diff(t_bins)
+
+dps = np.diff(psis)/dts
+dls = np.diff(np.log(np.abs(psis)))/dts
+
+gs  = (rho*np.pi * dts * np.sin(ts) * dps*dls).sum()
+
+print("\033[1;35mGubbins coefficient: %.3f\033[0m" % gs)
+
+
+##################################
+## Pair averaged correlations   ##
+##################################
+
+# Compute pair correlation function/spherical harmonics coefficients
 r_bins,gr = a.g_hist(n_eq, n_bins=n_bins, r_min=r_min, r_max=r_max)
 
-# Average pair spherical harmonics
 rho2      = a.average(a.pair_sh_aves, n_eq, bins=r_bins, inds=inds)
 rho2     *= 4*np.pi*rho**2 * gr[:,None]
 
@@ -170,10 +198,14 @@ print_f(rs, rho2, path, 'rho')
 ##################################
 
 # Invert H-equation in the form rho2_r = alpha*h_r + v, with rho2_r,h_r,v of size n_tot
-h     = np.zeros_like(rho2, dtype=np.float32)
+h = np.zeros_like(rho2, dtype=np.float32)
 
-# Rescale rho2 by relevant degeneracies
-rho2 *= degs[None,:]
+# Symmetrise rho2
+for idx in range(n_tot):
+	l1,m1,l2,m2,l,m = inds[idx]
+	
+	if ( (l1 == l2) & (abs(m1) == abs(m2)) ): rho2[:,idx] *= degs[idx]
+	else:					                  rho2[:,idx] *= degs[idx]/2.
 
 # Compute v
 @numba.jit("void(f4[:],i4[:,:],f4[:],f4)",nopython=True)
@@ -190,7 +222,7 @@ def set_v_coeffs(_f, _inds, _v, rho):
 v = np.zeros(n_tot, dtype=np.float32)
 set_v_coeffs(f, inds, v, rho)
 
-# Partial Clebsch-Gordan sums
+# Partial f-weighted Clebsch-Gordan sums
 @numba.jit("i4(i4,i4)",nopython=True)
 def sph_idx(l, m): return int(l*(l+1)/2 + m)
 
@@ -248,7 +280,10 @@ def set_alpha_coeffs(_CGs, _f, _inds, _degs, _rows, _cols, _data, rho, l_max):
 			mp  = _inds[idx2,5]
 			
 			if ( (mp1 == m1) & (mp2 == m2) & (lp == l) & (mp == m) ):
-				coeff      = rho**2 * cg_2sum(_CGs,_f,l1,l2,lp1,lp2,m1,m2,l_max) * _degs[idx2]
+				coeff1     = cg_2sum(_CGs,_f,l1,l2,lp1,lp2,m1,m2,l_max)
+				coeff2     = cg_2sum(_CGs,_f,l1,l2,lp2,lp1,m1,m2,l_max)
+				
+				coeff      = rho**2 * (coeff1+coeff2)/2. * _degs[idx2]
 
 				_rows[ctr] = idx1
 				_cols[ctr] = idx2
@@ -257,15 +292,13 @@ def set_alpha_coeffs(_CGs, _f, _inds, _degs, _rows, _cols, _data, rho, l_max):
 				ctr       += 1
 
 # Find number of non-zero alpha elements
-ind_t      = np.delete(inds, [0,2], axis=1)
-ind_t,nums = np.unique(ind_t, axis=0, return_counts=True)
-
-n_coeffs   = (nums**2).sum()
+inds_t   = np.delete(inds, [0,2], axis=-1)
+n_coeffs = np.all((inds_t[:,None,:]==inds_t[None,:,:]), axis=-1).sum()
 
 # Empty containers for sparse coo_matrix constructor
-rows       = np.zeros(n_coeffs, dtype=np.int32)
-cols       = np.zeros(n_coeffs, dtype=np.int32)
-data       = np.zeros(n_coeffs, dtype=np.float32)
+rows     = np.zeros(n_coeffs, dtype=np.int32)
+cols     = np.zeros(n_coeffs, dtype=np.int32)
+data     = np.zeros(n_coeffs, dtype=np.float32)
 
 # Work-out alpha in sparse matrix format
 set_alpha_coeffs(CGs, f, inds, degs, rows, cols, data, rho, l_max)
@@ -286,7 +319,7 @@ print_f(rs, h, path, 'h')
 
 drs    = np.diff(r_bins)
 
-# Satisfy the Shannon-Nyquist criteria
+# Satisfy the Shannon-Nyquist criterium
 dr_max = drs.max()
 k_max  = min(k_max, np.pi/dr_max)
 
@@ -306,30 +339,41 @@ print_f(ks, hk, path, 'hk')
 # Invert Fourier-space OZ in the form h_k = beta_k*c_k with h_k,c_k of size n_tot
 ck  = np.zeros_like(hk, dtype=np.float32)
 
-# Rescale hk by relevant degeneracies
-hk *= degs[None,:]
+# Symmetrise h_k for lhs term
+hks = hk.copy()
 
-# Convenience Zeta function for non-diagonal beta_k coefficients
+for idx in range(n_tot):
+	l1,m1,l2,m2,l,m = inds[idx]
+	
+	if ( (l1 == l2) & (abs(m1) == abs(m2)) ): hks[:,idx] *= degs[idx]
+	else:					                  hks[:,idx] *= degs[idx]/2.
+
+# Symmetrised convenience function for non-diagonal beta_k coefficients
 @numba.jit("f4(f4[:,:,:],f4[:],f4[:],i4[:,:],i4[:],i4,i4,i4,i4,i4,i4,i4,i4,i4)",nopython=True)
 def zeta(_CGs, _hk, _f, _inds, _degs, l3, m3, l2, m2, l, m, lp, mp, l_max):
 	c_sum = 0.
 	n_tot = _inds.shape[0]
 
 	for idx in range(n_tot):
-		lp3 = _inds[idx,0]
-		mp3 = _inds[idx,1]
+		lp3   = _inds[idx,0]
+		mp3   = _inds[idx,1]
 		
-		lp2 = _inds[idx,2]
-		mp2 = _inds[idx,3]
+		lp2   = _inds[idx,2]
+		mp2   = _inds[idx,3]
 		
-		lpp = _inds[idx,4]
-		mpp = _inds[idx,5]
+		lpp   = _inds[idx,4]
+		mpp   = _inds[idx,5]
+		
+		cond1 = ( (mp3 == m3) & (lp2 == l2) & (mp2 == m2) )
+		cond2 = ( (mp2 == m3) & (lp3 == l2) & (mp3 == m2) )
+		
+		if ( cond1 | cond2 ):
+			coeff = _CGs[sph_idx(l,m),sph_idx(lp,mp),sph_idx(lpp,mpp)]
 
-		if ( (mp3 == m3) & (lp2 == l2) & (mp2 == m2) ):
-			coeff  = _CGs[sph_idx(l,m),sph_idx(lp,mp),sph_idx(lpp,mpp)]
-			c_sum += coeff * cg_1sum(_CGs, _f, l3, lp3, m3, l_max) * _hk[idx]
+			if cond1: c_sum += coeff * cg_1sum(_CGs,_f,l3,lp3,m3,l_max) * _hk[idx]*_degs[idx]
+			if cond2: c_sum += coeff * cg_1sum(_CGs,_f,l3,lp2,m3,l_max) * _hk[idx]*_degs[idx]
 
-	return (-1.)**m3 * c_sum
+	return (-1.)**m3 * c_sum/4.
 
 # Beta coefficient setter
 @numba.jit("void(f4[:,:,:],f4[:],f4[:],i4[:,:],i4[:],i4[:],i4[:],f4[:],f4,i4)",nopython=True)
@@ -348,21 +392,34 @@ def set_beta_coeffs(_CGs, _hk, _f, _inds, _degs, _rows, _cols, _data, rho, l_max
 		m  = _inds[idx1,5]
 		
 		for idx2 in range(n_tot):
-			lp1 = _inds[idx2,0]
-			mp1 = _inds[idx2,1]
+			lp1   = _inds[idx2,0]
+			mp1   = _inds[idx2,1]
 			
-			lp2 = _inds[idx2,2]
-			mp2 = _inds[idx2,3]
+			lp2   = _inds[idx2,2]
+			mp2   = _inds[idx2,3]
 			
-			lp  = _inds[idx2,4]
-			mp  = _inds[idx2,5]
+			lp    = _inds[idx2,4]
+			mp    = _inds[idx2,5]
 			
-			if ( (lp1 == l1) & (mp1 == m1) ):
-				coeff  = zeta(_CGs,_hk,_f,_inds,_degs,lp2,mp2,l2,m2,l,m,lp,mp,l_max)
-				coeff *= rho * _degs[idx2]
-				
-				if ( (lp2 == l2) & (mp2 == m2) & (lp == l) & (mp == m) ):
-					coeff += 1. * _degs[idx2]
+			cond1 = ( (lp1 == l1) & (mp1 == m1) )
+			cond2 = ( (lp2 == l1) & (mp2 == m1) )
+			
+			if ( cond1 | cond2 ):
+				coeff = 0.
+
+				# Symmetrised h_k/c_k coupling coefficients
+				if cond1:
+					cz1    = zeta(_CGs,_hk,_f,_inds,_degs,lp2,mp2,l2,m2,l,m,lp,mp,l_max)
+					coeff += rho*cz1 * _degs[idx2]
+		
+				if cond2:
+					cz2    = zeta(_CGs,_hk,_f,_inds,_degs,lp1,mp1,l2,m2,l,m,lp,mp,l_max)
+					coeff += rho*cz2 * _degs[idx2]
+			
+				# Identity matrix with symmetrised degeneracy for decoupled rhs c_k
+				if ( cond1 & (lp2 == l2) & (mp2 == m2) & (lp == l) & (mp == m) ):
+					if ( (l1 == l2) & (abs(m1) == abs(m2)) ): coeff += 1. * degs[idx2]
+					else:				                      coeff += 1. * degs[idx2]/2.
 				
 				_rows[ctr] = idx1
 				_cols[ctr] = idx2
@@ -370,24 +427,30 @@ def set_beta_coeffs(_CGs, _hk, _f, _inds, _degs, _rows, _cols, _data, rho, l_max
 				
 				ctr       += 1
 
-# Find number of non-zero beta elements
-ind_t      = np.delete(inds, [2,3,4,5], axis=1)
-ind_t,nums = np.unique(ind_t, axis=0, return_counts=True)
-				
-n_coeffs   = (nums**2).sum()
+# Find upper bound for number of non-zero beta elements
+inds_t1   = np.delete(inds, [2,3,4,5], axis=-1)
+inds_t2   = np.delete(inds, [0,1,4,5], axis=-1)
+
+n_coeffs1 = np.all((inds_t1[:,None,:]==inds_t1[None,:,:]), axis=-1).sum()
+n_coeffs2 = np.all((inds_t1[:,None,:]==inds_t2[None,:,:]), axis=-1).sum()
+
+n_coeffs  = n_coeffs1+n_coeffs2
 				
 # Empty containers for sparse coo_matrix constructor
-rows       = np.zeros(n_coeffs, dtype=np.int32)
-cols       = np.zeros(n_coeffs, dtype=np.int32)
-data       = np.zeros(n_coeffs, dtype=np.float32)
+rows      = np.zeros(n_coeffs, dtype=np.int32)
+cols      = np.zeros(n_coeffs, dtype=np.int32)
+data      = np.zeros(n_coeffs, dtype=np.float32)
 
-for idx_k,h_k in enumerate(hk):
+for idx_k in range(n_k):
+	h_k  = hk[idx_k,:]
+	h_ks = hks[idx_k,:]
+	
 	# Work-out beta in sparse matrix format
 	set_beta_coeffs(CGs, h_k, f, inds, degs, rows, cols, data, rho, l_max)
 	beta = sps.coo_matrix((data, (rows,cols)), shape=(n_tot,n_tot), dtype=np.float32).tocsc()
 
-	# Solve for ck
-	ck[idx_k,:] = sps.linalg.spsolve(beta, h_k)
+	# Solve for ck using symmetrised hks for lhs
+	ck[idx_k,:] = sps.linalg.spsolve(beta, h_ks)
 
 	print("\033[1;36mSuccessfully resolved %d out of %d iso-k surfaces\033[0m" % (idx_k+1,n_k))
 
@@ -422,8 +485,8 @@ for idx_k in range(n_k):
 		l1,m1,l2,m2,l,m = inds[idx]
 			
 		if ( (abs(m1) == 1) & (abs(m2) == 1) ):
-			c_sum  = np.zeros(3, dtype=np.float32)
-			pref   = np.sqrt(l1*(l1+1.)*l2*(l2+1.)) * f[l1]*f[l2]
+			c_sum = np.zeros(3, dtype=np.float32)
+			pref  = np.sqrt(l1*(l1+1.)*l2*(l2+1.)) * f[l1]*f[l2]
 
 			if ( (l == 0) ):
 				c_sum += ck[idx_k,idx]*degs[idx]
@@ -436,28 +499,27 @@ for idx_k in range(n_k):
 
 			cii[idx_k,:] += rho**2/(8*np.sqrt(np.pi)) * pref*c_sum
 
-# Print cii's to files
-cres      = np.zeros([n_k,3], dtype=np.float32)
-cres[:,0] = ks
+# Save cii's and ki's
+c_res      = np.zeros([n_k,3], dtype=np.float32)
+c_res[:,0] = ks
 
-ki        = np.zeros(3, dtype=np.float32)
+ki         = np.zeros(3, dtype=np.float32)
 
 for i in range(3):
 	# Quadratic initial fit over n_fit points for ki's
-	coeffs    = np.polyfit(ks[:n_fit]**2, cii[:n_fit,i], 1)
-	fit       = np.poly1d(coeffs)(ks**2)
+	coeffs     = np.polyfit(ks[:n_fit]**2, cii[:n_fit,i], 1)
+	fit        = np.poly1d(coeffs)(ks**2)
 	
-	ki[i]     = coeffs[0]/2.
+	ki[i]      = coeffs[0]
 
-	cres[:,1] = cii[:,i]
-	cres[:,2] = fit
+	c_res[:,1] = cii[:,i]
+	c_res[:,2] = fit
 	
-	file_res  = "%s/c%d_%d_%d.res" % (path,i+1,n_eq,l_max)
-	np.savetxt(file_res, cres)
+	file_res   = "%s/c%d_%d_%d.res" % (path,i+1,n_eq,l_max)
+	np.savetxt(file_res, c_res)
 
 	print("\033[1;32mPrinted C%d to '%s'\033[0m" % (i+1,file_res))
 
-# Print ki's to files
 file_ki = "%s/ks_%d_%d_%d.res" % (path,n_eq,l_max,n_fit)
 np.savetxt(file_ki, ki)
 
