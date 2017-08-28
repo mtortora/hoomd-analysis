@@ -184,7 +184,7 @@ rho2      = a.average(a.pair_sh_aves, n_eq, bins=r_bins, inds=inds)
 rho2     *= 4*np.pi*rho**2 * gr[:,None]
 
 # Save rho2 coefficients up to rank l_print
-path      = "%s/harmonics2" % path_traj
+path      = "%s/harmonics" % path_traj
 rs        = r_bins[1:]
 
 print_f(rs, rho2, path, 'rho')
