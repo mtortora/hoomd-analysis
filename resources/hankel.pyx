@@ -7,10 +7,10 @@ from scipy.special import spherical_jn
 
 
 # Computes Hankel transform for h matrix with coefficients inds
-cpdef np.ndarray[np.float32_t,ndim=2] hk_t(np.ndarray[np.float32_t,ndim=2] h,
+cpdef np.ndarray[np.float64_t,ndim=2] hk_t(np.ndarray[np.float64_t,ndim=2] h,
                                            np.ndarray[np.int32_t,  ndim=2] inds,
-                                           np.ndarray[np.float32_t,ndim=1] r_bins,
-                                           np.ndarray[np.float32_t,ndim=1] ks):
+                                           np.ndarray[np.float64_t,ndim=1] r_bins,
+                                           np.ndarray[np.float64_t,ndim=1] ks):
 
 	cdef int l_max      = inds.max()
 
@@ -19,13 +19,13 @@ cpdef np.ndarray[np.float32_t,ndim=2] hk_t(np.ndarray[np.float32_t,ndim=2] h,
 
 	cdef Py_ssize_t n_r = r_bins.shape[0]-1
 
-	cdef np.ndarray[np.float32_t,ndim=1] rs   = r_bins[1:]
-	cdef np.ndarray[np.float32_t,ndim=1] drs  = np.diff(r_bins)
+	cdef np.ndarray[np.float64_t,ndim=1] rs   = r_bins[1:]
+	cdef np.ndarray[np.float64_t,ndim=1] drs  = np.diff(r_bins)
 
-	cdef np.ndarray[np.float32_t,ndim=2] hk   = np.zeros([n_k,n_h], dtype=np.float32)
+	cdef np.ndarray[np.float64_t,ndim=2] hk   = np.zeros([n_k,n_h], dtype=np.float64)
 
 	# Tabulate Bessel functions
-	cdef np.ndarray[np.float32_t,ndim=3] c_bs = _bessel(l_max, rs, ks, 0)
+	cdef np.ndarray[np.float64_t,ndim=3] c_bs = _bessel(l_max, rs, ks, 0)
 
 	cdef int l
 	cdef Py_ssize_t idx_k,idx_h,idx_l,idx_r
@@ -45,10 +45,10 @@ cpdef np.ndarray[np.float32_t,ndim=2] hk_t(np.ndarray[np.float32_t,ndim=2] h,
 
 
 # Computes inverse Hankel transform for hk matrix with coefficients inds
-cpdef np.ndarray[np.float32_t,ndim=2] inv_hk_t(np.ndarray[np.float32_t,ndim=2] hk,
+cpdef np.ndarray[np.float64_t,ndim=2] inv_hk_t(np.ndarray[np.float64_t,ndim=2] hk,
                                                np.ndarray[np.int32_t,  ndim=2] inds,
-                                               np.ndarray[np.float32_t,ndim=1] k_bins,
-                                               np.ndarray[np.float32_t,ndim=1] rs):
+                                               np.ndarray[np.float64_t,ndim=1] k_bins,
+                                               np.ndarray[np.float64_t,ndim=1] rs):
 
 	cdef int l_max      = inds.max()
 
@@ -57,13 +57,13 @@ cpdef np.ndarray[np.float32_t,ndim=2] inv_hk_t(np.ndarray[np.float32_t,ndim=2] h
 
 	cdef Py_ssize_t n_k = k_bins.shape[0]-1
 
-	cdef np.ndarray[np.float32_t,ndim=1] ks   = k_bins[1:]
-	cdef np.ndarray[np.float32_t,ndim=1] dks  = np.diff(k_bins)
+	cdef np.ndarray[np.float64_t,ndim=1] ks   = k_bins[1:]
+	cdef np.ndarray[np.float64_t,ndim=1] dks  = np.diff(k_bins)
 
-	cdef np.ndarray[np.float32_t,ndim=2] h    = np.zeros([n_r,n_h], dtype=np.float32)
+	cdef np.ndarray[np.float64_t,ndim=2] h    = np.zeros([n_r,n_h], dtype=np.float64)
 
 	# Tabulate Bessel functions
-	cdef np.ndarray[np.float32_t,ndim=3] c_bs = _bessel(l_max, rs, ks, 1)
+	cdef np.ndarray[np.float64_t,ndim=3] c_bs = _bessel(l_max, rs, ks, 1)
 
 	cdef int l
 	cdef Py_ssize_t idx_k,idx_h,idx_l,idx_r
@@ -83,19 +83,19 @@ cpdef np.ndarray[np.float32_t,ndim=2] inv_hk_t(np.ndarray[np.float32_t,ndim=2] h
 
 
 # Computes Bessel spherical functions of the first kind on r- and k-grid up to rank l_max
-cdef np.ndarray[np.float32_t,ndim=3] _bessel(int l_max,
-                                             np.ndarray[np.float32_t,ndim=1] rs,
-                                             np.ndarray[np.float32_t,ndim=1] ks,
+cdef np.ndarray[np.float64_t,ndim=3] _bessel(int l_max,
+                                             np.ndarray[np.float64_t,ndim=1] rs,
+                                             np.ndarray[np.float64_t,ndim=1] ks,
                                              int mode):
 
 	# Symmetrised for real (mode=0) and Fourier space (mode=1) integration
 	cdef Py_ssize_t n_r = rs.shape[0]
 	cdef Py_ssize_t n_k = ks.shape[0]
 
-	cdef np.ndarray[np.float32_t,ndim=3] c_bs = np.zeros([n_r,n_k,l_max//2+1], dtype=np.float32)
+	cdef np.ndarray[np.float64_t,ndim=3] c_bs = np.zeros([n_r,n_k,l_max//2+1], dtype=np.float64)
 
 	cdef int   l
-	cdef float k
+	cdef double k
 
 	cdef Py_ssize_t idx_k,idx_l
 

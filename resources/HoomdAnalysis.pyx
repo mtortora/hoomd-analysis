@@ -49,29 +49,29 @@ class Analyser():
 		u1    = 2 * (quats[...,2]*quats[...,3] - quats[...,0]*quats[...,1])
 		u2    = 1 - 2.*quats[...,1]**2 - 2.*quats[...,2]**2
 
-		return np.asarray([u0,u1,u2]).T
+		return np.asarray([u0,u1,u2], dtype=np.float64).T
 
 
 	# Project 3xn vector(s) vecs in the frame of 3x3 matrix rot
-	def proj_vec(self, vecs, rot): return np.dot(rot.T, vecs.T).T
+	def proj_vec(self, vecs, rot): return np.asarray(np.dot(rot.T, vecs.T), dtype=np.float64).T
 	
 	
 	# Vectorial polar/azimuthal angles
 	def sph_angs(self, vecs):
 		vecs  /= np.linalg.norm(vecs, axis=-1, keepdims=True)
 	
-		thetas = np.asarray(np.arccos(vecs[...,2]), dtype=np.float32)
-		phis   = np.asarray(np.arctan(vecs[...,1]/vecs[...,0]), dtype=np.float32)
+		thetas = np.asarray(np.arccos(vecs[...,2]), dtype=np.float64)
+		phis   = np.asarray(np.arctan(vecs[...,1]/vecs[...,0]), dtype=np.float64)
 	
 		# Handle azimuthal phi degeneracy
 		phis[vecs[...,0] < 0] += np.pi
 	
-		return np.asarray([thetas,phis], dtype=np.float32)
+		return np.asarray([thetas,phis], dtype=np.float64)
 
 
 	# Nematic director from Q spectral analysis
 	def nematic_q(self, snap, mode="ord"):
-		qs          = np.zeros([self.n_part,3,3], dtype=np.float32)
+		qs          = np.zeros([self.n_part,3,3], dtype=np.float64)
 
 		# Ensemble-averaged Q tensor
 		u0, u1, u2  = self.part_axis(snap).T
@@ -98,7 +98,7 @@ class Analyser():
 		if np.linalg.det(evecs) < 0: evecs[:,0] *= -1
 	
 		if mode == "ord":   return evals[2]
-		if mode == "frame": return np.asarray(evecs, dtype=np.float32)
+		if mode == "frame": return np.asarray(evecs, dtype=np.float64)
 
 
 	# Vectorised pairwise distance computations
@@ -164,7 +164,7 @@ class Analyser():
 		vols      = dims[:,0]*dims[:,1]*dims[:,2]
 		vol_ave   = vols.mean()
 
-		hist,bins = np.histogram(dists, bins=np.linspace(r_min,r_max,num=n_bins+1,dtype=np.float32))
+		hist,bins = np.histogram(dists, bins=np.linspace(r_min,r_max,num=n_bins+1,dtype=np.float64))
 
 		# Renormalise histogram
 		rs        = bins[1:]
@@ -172,7 +172,7 @@ class Analyser():
 
 		vol_bins  = 4 * np.pi * rs**2 * drs
 
-		hist      = np.asfarray(hist, dtype=np.float32)
+		hist      = np.asfarray(hist, dtype=np.float64)
 		
 		hist     /= self.n_part*(self.n_part-1)/2. * n_eq
 		hist     *= vol_ave/vol_bins
@@ -182,7 +182,7 @@ class Analyser():
 
 	# Single-particle spherical harmonic averages
 	def single_sh_aves(self, snap, l_max=8):
-		sh_aves     = np.zeros(l_max+1, dtype=np.float32)
+		sh_aves     = np.zeros(l_max+1, dtype=np.float64)
 
 		# Project particle axes in nematic frame and fetch spherical angles
 		axes        = self.part_axis(snap)
@@ -203,46 +203,46 @@ class Analyser():
 		cdef int        n_part = self.n_part
 		cdef int        l_max  = inds.max()
 
-		cdef float      r_min  = bins.min()
-		cdef float      r_max  = bins.max()
+		cdef double     r_min  = bins.min()
+		cdef double     r_max  = bins.max()
 
 		cdef Py_ssize_t n_tot  = inds.shape[0]
 		cdef Py_ssize_t n_bins = bins.shape[0]-1
 
 		cdef Py_ssize_t n_sh   = _sph_idx(l_max, l_max)+1
 
-		cdef np.ndarray[np.int32_t,  ndim=2]   inds_c   = inds
+		cdef np.ndarray[np.int32_t,  ndim=2]    inds_c   = inds
 
-		cdef np.ndarray[np.float32_t,ndim=1]   bins_c   = bins
-		cdef np.ndarray[np.float32_t,ndim=1]   box_c    = snap.configuration.box[:3]
+		cdef np.ndarray[np.float64_t,ndim=1]    bins_c   = bins
+		cdef np.ndarray[np.float64_t,ndim=1]    box_c    = np.asarray(snap.configuration.box[:3], dtype=np.float64)
 
-		cdef np.ndarray[np.float32_t,ndim=2]   cm_pos   = snap.particles.position
+		cdef np.ndarray[np.float64_t,ndim=2]    cm_pos   = np.asarray(snap.particles.position, dtype=np.float64)
 
-		cdef np.ndarray[np.float32_t,ndim=2]   axes     = self.part_axis(snap)
-		cdef np.ndarray[np.float32_t,ndim=2]   frame    = self.nematic_q(snap, mode="frame")
+		cdef np.ndarray[np.float64_t,ndim=2]    axes     = self.part_axis(snap)
+		cdef np.ndarray[np.float64_t,ndim=2]    frame    = self.nematic_q(snap, mode="frame")
 		
-		cdef np.ndarray[np.float32_t,ndim=2]   axes_prj = self.proj_vec(axes, frame)
-		cdef np.ndarray[np.float32_t,ndim=2]   angs     = self.sph_angs(axes_prj)
+		cdef np.ndarray[np.float64_t,ndim=2]    axes_prj = self.proj_vec(axes, frame)
+		cdef np.ndarray[np.float64_t,ndim=2]    angs     = self.sph_angs(axes_prj)
         
-		cdef np.ndarray[np.float32_t,ndim=1]   thetas   = angs[0]
-		cdef np.ndarray[np.float32_t,ndim=1]   phis     = angs[1]
+		cdef np.ndarray[np.float64_t,ndim=1]    thetas   = angs[0]
+		cdef np.ndarray[np.float64_t,ndim=1]    phis     = angs[1]
 
 		# Set particle counter per spherical shell
-		cdef np.ndarray[np.float32_t,ndim=1]   p_ctr    = np.zeros(n_bins, dtype=np.float32)
+		cdef np.ndarray[np.float64_t,ndim=1]    p_ctr    = np.zeros(n_bins, dtype=np.float64)
 
 		# Spherical harmonics containers
-		cdef np.ndarray[np.complex64_t,ndim=1] sh1      = np.zeros(n_sh, dtype=np.complex64)
-		cdef np.ndarray[np.complex64_t,ndim=1] sh2      = np.zeros(n_sh, dtype=np.complex64)
-		cdef np.ndarray[np.complex64_t,ndim=1] sh       = np.zeros(n_sh, dtype=np.complex64)
+		cdef np.ndarray[np.complex128_t,ndim=1] sh1      = np.zeros(n_sh, dtype=np.complex128)
+		cdef np.ndarray[np.complex128_t,ndim=1] sh2      = np.zeros(n_sh, dtype=np.complex128)
+		cdef np.ndarray[np.complex128_t,ndim=1] sh       = np.zeros(n_sh, dtype=np.complex128)
                 
-		cdef np.ndarray[np.float32_t,  ndim=2] sh_a     = np.zeros([n_bins,n_tot], dtype=np.float32)
+		cdef np.ndarray[np.float64_t,  ndim=2] sh_a      = np.zeros([n_bins,n_tot], dtype=np.float64)
                 
-		cdef np.ndarray[np.float32_t,  ndim=1] vec,vec_prj
+		cdef np.ndarray[np.float64_t,  ndim=1] vec,vec_prj
 		
 		cdef int        l1,m1,l2,m2,l,m
 		cdef Py_ssize_t idx_part1,idx_part2,idx_axis,idx_r,idx_h,idx,idx1,idx2
 		
-		cdef float theta1,phi1,theta2,phi2,theta,phi,r
+		cdef double theta1,phi1,theta2,phi2,theta,phi,r
 
 		# Iterate over all particle pairs
 		for idx_part1 in range(n_part):
@@ -299,11 +299,11 @@ cdef Py_ssize_t _sph_idx(int l, int m) nogil: return int(l*(l+1)/2 + m)
 
 
 # Fetch all harmonics up to rank l_max
-cdef void _set_sph_harms(np.ndarray[np.complex64_t,ndim=1] sh, int l_max, double theta, double phi):
-	cdef int           l,m,
-	cdef Py_ssize_t    lmp,lmn
+cdef void _set_sph_harms(np.ndarray[np.complex128_t,ndim=1] sh, int l_max, double theta, double phi):
+	cdef int        l,m,
+	cdef Py_ssize_t lmp,lmn
 
-	cdef float complex slm
+	cdef double complex slm
 
 	for l in range(l_max+1):
 		if l % 2 == 0:
